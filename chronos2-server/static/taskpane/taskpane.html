@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Chronos2 Forecasting</title>
+
+    <!-- Office JavaScript API -->
+    <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+    
+    <!-- Estilos -->
+    <link rel="stylesheet" href="taskpane.css" />
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🔮 Chronos2 Forecasting</h1>
+            <p class="subtitle">AI-Powered Time Series Forecasting</p>
+        </header>
+
+        <!-- Status del servidor -->
+        <div class="status-card">
+            <div class="status-indicator" id="serverStatus">
+                <span class="dot"></span>
+                <span id="statusText">Checking server...</span>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('basic')">Basic</button>
+            <button class="tab" onclick="showTab('multi')">Multi-Series</button>
+            <button class="tab" onclick="showTab('covariates')">Covariates</button>
+            <button class="tab" onclick="showTab('scenarios')">Scenarios</button>
+        </div>
+
+        <!-- Tab 1: Funciones Básicas -->
+        <div id="tab-basic" class="tab-content active">
+            <div class="card">
+                <h2>📊 Univariate Forecast</h2>
+                <p>Select a range with your time series data</p>
+                
+                <div class="form-group">
+                    <label>Prediction Length:</label>
+                    <input type="number" id="predictionLength" value="7" min="1" max="365" />
+                </div>
+                
+                <div class="form-group">
+                    <label>Frequency:</label>
+                    <select id="frequency">
+                        <option value="D">Daily</option>
+                        <option value="W">Weekly</option>
+                        <option value="M">Monthly</option>
+                        <option value="H">Hourly</option>
+                        <option value="Q">Quarterly</option>
+                    </select>
+                </div>
+                
+                <button class="btn btn-primary" onclick="forecastUnivariate()">
+                    🚀 Generate Forecast
+                </button>
+            </div>
+
+            <div class="card">
+                <h2>🔍 Anomaly Detection</h2>
+                <p>Detect outliers in your data</p>
+                
+                <div class="form-group">
+                    <label>Context Length:</label>
+                    <input type="number" id="contextLength" value="20" min="5" />
+                </div>
+                
+                <div class="form-group">
+                    <label>Recent Points:</label>
+                    <input type="number" id="recentPoints" value="7" min="1" />
+                </div>
+                
+                <button class="btn btn-secondary" onclick="detectAnomalies()">
+                    🔍 Detect Anomalies
+                </button>
+            </div>
+
+            <div class="card">
+                <h2>📈 Backtest</h2>
+                <p>Evaluate model accuracy</p>
+                
+                <div class="form-group">
+                    <label>Test Length:</label>
+                    <input type="number" id="testLength" value="7" min="1" />
+                </div>
+                
+                <button class="btn btn-secondary" onclick="runBacktest()">
+                    📈 Run Backtest
+                </button>
+            </div>
+        </div>
+
+        <!-- Tab 2: Multi-Series -->
+        <div id="tab-multi" class="tab-content">
+            <div class="card">
+                <h2>📊 Multi-Series Forecast</h2>
+                <p>Select data with multiple series (ID column + values)</p>
+                
+                <div class="info-box">
+                    <strong>Expected format:</strong><br>
+                    Column A: Series ID<br>
+                    Column B: Date<br>
+                    Column C: Value
+                </div>
+                
+                <div class="form-group">
+                    <label>Prediction Length:</label>
+                    <input type="number" id="multiPredLength" value="7" min="1" />
+                </div>
+                
+                <button class="btn btn-primary" onclick="forecastMultiSeries()">
+                    🚀 Forecast All Series
+                </button>
+            </div>
+        </div>
+
+        <!-- Tab 3: Covariates -->
+        <div id="tab-covariates" class="tab-content">
+            <div class="card">
+                <h2>🎯 Forecast with Covariates</h2>
+                <p>Include explanatory variables (price, promotions, etc.)</p>
+                
+                <div class="info-box">
+                    <strong>Expected format:</strong><br>
+                    Col A: Date<br>
+                    Col B: Target variable<br>
+                    Col C+: Covariates (price, promo, etc.)<br>
+                    <br>
+                    Future rows: Only covariates filled
+                </div>
+                
+                <div class="form-group">
+                    <label>Prediction Length:</label>
+                    <input type="number" id="covPredLength" value="7" min="1" />
+                </div>
+                
+                <div class="form-group">
+                    <label>Covariate Columns:</label>
+                    <input type="text" id="covariateNames" value="price,promotion,temperature" 
+                           placeholder="comma-separated names" />
+                </div>
+                
+                <button class="btn btn-primary" onclick="forecastWithCovariates()">
+                    🎯 Generate Forecast
+                </button>
+            </div>
+
+            <div class="card">
+                <h2>🎲 What-If Scenarios</h2>
+                <p>Compare multiple scenarios</p>
+                
+                <div class="form-group">
+                    <label>Number of Scenarios:</label>
+                    <input type="number" id="numScenarios" value="3" min="1" max="10" />
+                </div>
+                
+                <button class="btn btn-secondary" onclick="generateScenarios()">
+                    🎲 Generate Scenarios
+                </button>
+            </div>
+        </div>
+
+        <!-- Tab 4: Scenarios -->
+        <div id="tab-scenarios" class="tab-content">
+            <div class="card">
+                <h2>🔮 Multivariate Forecast</h2>
+                <p>Multiple target variables simultaneously</p>
+                
+                <div class="info-box">
+                    <strong>Expected format:</strong><br>
+                    Col A: Date<br>
+                    Col B+: Multiple targets (sales, returns, stock, etc.)
+                </div>
+                
+                <div class="form-group">
+                    <label>Prediction Length:</label>
+                    <input type="number" id="multivarPredLength" value="7" min="1" />
+                </div>
+                
+                <div class="form-group">
+                    <label>Target Columns:</label>
+                    <input type="text" id="targetColumns" value="sales,returns,stock" 
+                           placeholder="comma-separated column names" />
+                </div>
+                
+                <button class="btn btn-primary" onclick="forecastMultivariate()">
+                    🔮 Generate Forecast
+                </button>
+            </div>
+        </div>
+
+        <!-- Log de resultados -->
+        <div class="results-card">
+            <h3>📋 Results</h3>
+            <div id="results" class="results-log">
+                Ready to forecast...
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Powered by Amazon Chronos-2 🤖</p>
+            <p class="version">v2.1.0 - Full Featured</p>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="taskpane.js"></script>
+</body>
+</html>

@@ -1,8 +1,16 @@
+# CORE - RelFab PRU Extraction Engine Requirements
 
-graphiti-core[falkordb]==0.17.3
-cupy-cuda11x ; platform_machine == "aarch64" # AGX Orin
-cupy-cuda12x ; platform_machine != "aarch64" # A100/Colab
-opencv-python-headless
-pandas
-scipy
-llama-cpp-python
+## Runtime Requirements
+- Go 1.21+ (for development)
+- Docker (for FalkorDB container)
+- NVIDIA GPU with CUDA support (optional, for acceleration)
+
+## Development Tools
+- GitHub CLI
+- Git
+
+## Go Dependencies (will be managed via go.mod)
+- github.com/go-redis/redis/v8
+- github.com/gen2brain/go-fitz (for PDF processing)
+- gorgonia.org/gorgonia (for GPU computations in Go)
+- github.com/nfnt/resize (for image processing)

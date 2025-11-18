@@ -1,0 +1,41 @@
+# Use NVIDIA CUDA base image with Go
+FROM nvidia/cuda:12.0-devel-ubuntu20.04
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    ca-certificates \
+    git \
+    wget \
+    pkg-config \
+    libmupdf-dev \
+    libmupdf3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Go
+RUN wget -qO- https://golang.org/dl/go1.21.linux-amd64.tar.gz | tar -C /usr/local -xzf -
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Install additional Go dependencies that require CGO
+RUN go get -d github.com/gen2brain/go-fitz
+
+# Build the application
+RUN go build -o pru-engine ./cmd/pru-engine
+
+# Expose application port
+EXPOSE 8080
+
+# Set up entrypoint with GPU support
+CMD ["./pru-engine"]

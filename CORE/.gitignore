@@ -1,0 +1,99 @@
+# Go
+*.o
+*.a
+*.so
+*.exe
+*.dll
+*.dylib
+*.test
+*.prof
+.DS_Store
+go.mod
+go.sum
+
+# Docker
+.dockerignore
+docker-compose*.yml
+
+# Environment specific
+.env
+.config
+*.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+.directory
+*.metadata
+
+# Build artifacts
+bin/
+tmp/
+dist/
+build/
+
+# Data files (we'll add specific data files as needed)
+data/
+!data/README.md
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# Logs
+*.log
+logs/
+*.out
+
+# Test coverage
+coverage/
+.coverprofile
+*.coverprofile
+
+# IDE specific
+.vscode/
+.idea/
+.settings/
+*.tmproj
+nbproject/
+
+# Temporary files
+*.tmp
+*.temp
+*~
+\#*\#
+/.vscode/settings.json
+
+# Compiled files
+*.exe
+*.dll
+*.so
+*.dylib
+*.pyc
+*.pyo
+*.pyd
+*.jar
+*.war
+*.zip
+*.tar.gz
+*.rar
+
+# Project specific
+tmp/
+aprender_ai/
+*.zip
+*.py
+src/__pycache__/
+tests/__pycache__/

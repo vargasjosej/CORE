@@ -40,6 +40,7 @@ bin/
 tmp/
 dist/
 build/
+pru-engine
 
 # Data files (we'll add specific data files as needed)
 data/

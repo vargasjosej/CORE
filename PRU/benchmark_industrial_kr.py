@@ -900,10 +900,137 @@ class IndustrialKRLoader:
 
         return relations
 
-    def _synthetic_sensors(self, limit: int):
-        """Fallback: Generate synthetic sensor causality data."""
-        print("   Generating synthetic sensor data...")
+    def load_coin_videos(self, limit=100):
+        """Load COIN procedural video dataset (PRU-2: Sequentiality)."""
+        print(f"Loading COIN Procedural Videos (limit={limit})...")
+
+        coin_annotations = Path.home() / "Descargas" / "Datasets" / "coin-dataset" / "annotations" / "COIN.json"
+        coin_videos_dir = Path.home() / "Descargas" / "Datasets" / "coin-dataset" / "annotations" / "videos"
+
+        if coin_annotations.exists():
+            return self._load_real_coin(coin_annotations, coin_videos_dir, limit)
+        else:
+            return self._synthetic_procedures(limit)
+
+    def _load_real_coin(self, annotations_file: Path, videos_dir: Path, limit: int):
+        """Parse COIN annotations - generates PRU-2 sequential relations."""
+        import json
+
+        print(f"   Loading real COIN annotations from {annotations_file}")
+
+        with open(annotations_file, 'r') as f:
+            data = json.load(f)
+
+        database = data.get('database', {})
+
+        # Get list of downloaded videos
+        downloaded_videos = set()
+        if videos_dir.exists():
+            downloaded_videos = {f.stem for f in videos_dir.iterdir() if f.is_file()}
+            print(f"   Found {len(downloaded_videos)} downloaded videos")
+
         relations = []
+        processed_videos = 0
+
+        for video_id, video_data in database.items():
+            # Skip if video not downloaded (for now)
+            if downloaded_videos and video_id not in downloaded_videos:
+                continue
+
+            annotations = video_data.get('annotation', [])
+            if len(annotations) < 2:
+                continue  # Need at least 2 steps for sequentiality
+
+            recipe_type = video_data.get('recipe_type', 'unknown')
+            class_name = video_data.get('class', 'Unknown')
+            duration = video_data.get('duration', 0)
+
+            # Sort annotations by segment start time
+            sorted_annotations = sorted(annotations, key=lambda x: x['segment'][0])
+
+            # Generate PRU-2 sequential relations (step_i → step_j)
+            for i in range(len(sorted_annotations) - 1):
+                step_current = sorted_annotations[i]
+                step_next = sorted_annotations[i + 1]
+
+                # Create entities for steps (include sequence index to handle repeated steps)
+                entity_step_i = self.resolver.resolve_entity(
+                    f"{video_id}_step_{i}_{step_current['id']}_{step_current['label'][:30]}",
+                    modality="text"
+                )
+                entity_step_j = self.resolver.resolve_entity(
+                    f"{video_id}_step_{i+1}_{step_next['id']}_{step_next['label'][:30]}",
+                    modality="text"
+                )
+
+                # Extract timing
+                time_i_start, time_i_end = step_current['segment']
+                time_j_start, time_j_end = step_next['segment']
+
+                # PRU-2: Sequentiality (step_i → step_j)
+                relations.append(PRURelation(
+                    entity_a_id=entity_step_i,
+                    entity_b_id=entity_step_j,
+                    pru_type="PRU-2",  # Sequentiality
+                    confidence=0.9,  # High confidence (annotated)
+                    metadata={
+                        'source': 'real_coin',
+                        'video_id': video_id,
+                        'recipe_type': recipe_type,
+                        'class': class_name,
+                        'step_i_label': step_current['label'],
+                        'step_j_label': step_next['label'],
+                        'time_i_start': time_i_start,
+                        'time_i_end': time_i_end,
+                        'time_j_start': time_j_start,
+                        'time_j_end': time_j_end,
+                        'temporal_gap': time_j_start - time_i_end
+                    }
+                ))
+
+                if len(relations) >= limit:
+                    break
+
+            processed_videos += 1
+            if len(relations) >= limit:
+                break
+
+        print(f"✓ Generated {len(relations)} real COIN relations:")
+        print(f"   - {len(relations)} PRU-2 (sequentiality: step_i → step_j)")
+        print(f"   - Processed {processed_videos} videos")
+
+        return relations
+
+    def _synthetic_procedures(self, limit: int):
+        """Fallback: Generate synthetic procedural step data."""
+        print("   Generating synthetic procedural data...")
+        relations = []
+
+        # Synthetic procedure: "Make coffee"
+        steps = [
+            "grind_coffee_beans",
+            "boil_water",
+            "place_filter_in_dripper",
+            "add_ground_coffee",
+            "pour_hot_water",
+            "wait_for_brewing",
+            "remove_filter",
+            "serve_coffee"
+        ]
+
+        for i in range(min(limit, len(steps) - 1)):
+            entity_step_i = self.resolver.resolve_entity(steps[i], modality="text")
+            entity_step_j = self.resolver.resolve_entity(steps[i + 1], modality="text")
+
+            relations.append(PRURelation(
+                entity_a_id=entity_step_i,
+                entity_b_id=entity_step_j,
+                pru_type="PRU-2",
+                confidence=0.8,
+                metadata={'source': 'synthetic', 'procedure': 'make_coffee'}
+            ))
+
+        return relations
 
         for i in range(limit):
             # Synthetic causal chain: temp → vibration → wear → failure
@@ -1175,6 +1302,129 @@ class IndustrialKRBenchmark:
             }
         }
 
+    def benchmark_pru_2_sequentiality(self, relations: List[PRURelation]) -> Dict:
+        """
+        Benchmark PRU-2 (Sequentiality) on procedural videos (COIN dataset).
+
+        Validates:
+        - Acyclicity (no temporal loops in step sequences)
+        - Temporal ordering (step_i happens before step_j)
+        """
+        print()
+        print("=" * 80)
+        print("PRU-2 SEQUENTIALITY BENCHMARK (COIN Procedural Videos)")
+        print("=" * 80)
+        print()
+
+        print(f"Total PRU-2 relations: {len(relations)}")
+        print()
+
+        # Extract unique videos
+        videos = {}
+        for rel in relations:
+            video_id = rel.metadata.get('video_id', 'unknown')
+            if video_id not in videos:
+                videos[video_id] = []
+            videos[video_id].append(rel)
+
+        print(f"Videos processed: {len(videos)}")
+        print()
+
+        # Validate acyclicity (no step loops)
+        print("PRU-2 Acyclicity Check (No temporal loops):")
+        cycles_found = []
+
+        # Build graph for cycle detection
+        graph = {}
+        for rel in relations:
+            if rel.entity_a_id not in graph:
+                graph[rel.entity_a_id] = []
+            graph[rel.entity_a_id].append(rel.entity_b_id)
+
+        # DFS cycle detection
+        def has_cycle(node, visited, rec_stack):
+            visited.add(node)
+            rec_stack.add(node)
+
+            if node in graph:
+                for neighbor in graph[node]:
+                    if neighbor not in visited:
+                        if has_cycle(neighbor, visited, rec_stack):
+                            return True
+                    elif neighbor in rec_stack:
+                        cycles_found.append(f"{node} -> {neighbor}")
+                        return True
+
+            rec_stack.remove(node)
+            return False
+
+        visited = set()
+        for node in graph:
+            if node not in visited:
+                has_cycle(node, visited, set())
+
+        if not cycles_found:
+            print("  ✅ PASSED (No temporal loops)")
+        else:
+            print(f"  ❌ FAILED ({len(cycles_found)} cycles found)")
+            for cycle in cycles_found[:3]:
+                print(f"    - {cycle}")
+
+        print()
+
+        # Validate temporal ordering (step_i before step_j)
+        print("PRU-2 Temporal Ordering Check:")
+        temporal_violations = []
+
+        for rel in relations:
+            time_i_end = rel.metadata.get('time_i_end', 0)
+            time_j_start = rel.metadata.get('time_j_start', 0)
+            temporal_gap = rel.metadata.get('temporal_gap', 0)
+
+            # step_j must start after step_i ends (temporal_gap >= 0)
+            if temporal_gap < 0:
+                temporal_violations.append(
+                    f"Video {rel.metadata.get('video_id')}: "
+                    f"{rel.metadata.get('step_i_label', 'step_i')[:30]} ends at {time_i_end}s "
+                    f"but {rel.metadata.get('step_j_label', 'step_j')[:30]} starts at {time_j_start}s "
+                    f"(overlap: {abs(temporal_gap):.1f}s)"
+                )
+
+        if not temporal_violations:
+            print("  ✅ PASSED (Temporal ordering valid)")
+        else:
+            print(f"  ⚠️  {len(temporal_violations)} overlapping steps (normal for concurrent actions)")
+            for v in temporal_violations[:3]:
+                print(f"    - {v}")
+
+        print()
+
+        # Calculate statistics
+        acyclicity_passed = len(cycles_found) == 0
+        temporal_ordering_passed = len(temporal_violations) == 0
+
+        # Sample some relations
+        print("Sample Relations:")
+        for i, rel in enumerate(relations[:3]):
+            print(f"  {i+1}. Video {rel.metadata.get('video_id')} ({rel.metadata.get('class')})")
+            print(f"     Step {i}: {rel.metadata.get('step_i_label', 'N/A')[:60]}")
+            print(f"     Step {i+1}: {rel.metadata.get('step_j_label', 'N/A')[:60]}")
+            print(f"     Temporal gap: {rel.metadata.get('temporal_gap', 0):.1f}s")
+            print()
+
+        return {
+            'dataset': 'coin',
+            'pru_type': 'PRU-2',
+            'total_relations': len(relations),
+            'total_videos': len(videos),
+            'acyclicity_passed': acyclicity_passed,
+            'temporal_ordering_passed': temporal_ordering_passed,
+            'violations': {
+                'cycles': cycles_found,
+                'temporal_overlaps': temporal_violations
+            }
+        }
+
     def benchmark_dataset(self, dataset_name: str, pru_type: str = None, limit: int = 100):
         """
         Benchmark a specific dataset.
@@ -1196,6 +1446,10 @@ class IndustrialKRBenchmark:
         elif dataset_name == 'cmapss':
             relations = self.loader.load_cmapss_sensors(limit=limit)
             return self.benchmark_pru_3_7_causality(relations)
+
+        elif dataset_name == 'coin':
+            relations = self.loader.load_coin_videos(limit=limit)
+            return self.benchmark_pru_2_sequentiality(relations)
 
         elif dataset_name == 'doclaynet':
             relations = self.loader.load_doclaynet(limit=limit)

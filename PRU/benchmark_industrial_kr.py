@@ -609,15 +609,17 @@ class IndustrialKRLoader:
         for img_id, anns in list(annotations_by_image.items())[:limit]:
             page_id = f"page_{img_id}"
 
-            # Group by category
-            figures = [a for a in anns if categories[a['category_id']] == 'Figure']
+            # Group by category (DocLayNet uses 'Picture' not 'Figure')
+            pictures = [a for a in anns if categories[a['category_id']] == 'Picture']
             captions = [a for a in anns if categories[a['category_id']] == 'Caption']
+            tables = [a for a in anns if categories[a['category_id']] == 'Table']
+            texts = [a for a in anns if categories[a['category_id']] == 'Text']
 
-            # PRU-1: Co-presence (figure ∼ caption on same page)
-            for fig in figures:
+            # PRU-1: Co-presence (picture ∼ caption on same page)
+            for pic in pictures:
                 for cap in captions:
-                    entity_fig = self.resolver.resolve_entity(
-                        f"figure_{fig['id']}",
+                    entity_pic = self.resolver.resolve_entity(
+                        f"picture_{pic['id']}",
                         modality="image"
                     )
                     entity_cap = self.resolver.resolve_entity(
@@ -626,58 +628,116 @@ class IndustrialKRLoader:
                     )
 
                     relations.append(PRURelation(
-                        entity_a_id=entity_fig,
+                        entity_a_id=entity_pic,
                         entity_b_id=entity_cap,
                         pru_type="PRU-1",
-                        confidence=1.0,
+                        confidence=0.8,  # Inferred co-presence
                         metadata={
                             'source': 'real_doclaynet',
                             'page': page_id,
-                            'entity_a_text': f"figure_{fig['id']}",
+                            'entity_a_text': f"picture_{pic['id']}",
                             'entity_b_text': f"caption_{cap['id']}",
-                            'type_a': 'Figure',
+                            'type_a': 'Picture',
                             'type_b': 'Caption'
                         }
                     ))
 
-            # PRU-4: Containment (check if caption bbox inside figure bbox)
-            for fig in figures:
-                fig_bbox = fig['bbox']  # [x, y, width, height]
-                fig_x1, fig_y1 = fig_bbox[0], fig_bbox[1]
-                fig_x2, fig_y2 = fig_x1 + fig_bbox[2], fig_y1 + fig_bbox[3]
+            # PRU-1: Table ∼ Caption
+            for tbl in tables:
+                for cap in captions:
+                    # Check spatial proximity (within 200px)
+                    tbl_y = tbl['bbox'][1]
+                    cap_y = cap['bbox'][1]
+                    if abs(tbl_y - cap_y) < 200:
+                        entity_tbl = self.resolver.resolve_entity(
+                            f"table_{tbl['id']}",
+                            modality="table"
+                        )
+                        entity_cap = self.resolver.resolve_entity(
+                            f"caption_{cap['id']}",
+                            modality="text"
+                        )
+
+                        relations.append(PRURelation(
+                            entity_a_id=entity_tbl,
+                            entity_b_id=entity_cap,
+                            pru_type="PRU-1",
+                            confidence=0.7,
+                            metadata={
+                                'source': 'real_doclaynet',
+                                'page': page_id,
+                                'entity_a_text': f"table_{tbl['id']}",
+                                'entity_b_text': f"caption_{cap['id']}",
+                                'type_a': 'Table',
+                                'type_b': 'Caption',
+                                'distance': abs(tbl_y - cap_y)
+                            }
+                        ))
+
+            # PRU-4: Containment (check if caption bbox inside picture bbox)
+            for pic in pictures:
+                pic_bbox = pic['bbox']  # [x, y, width, height]
+                pic_x1, pic_y1 = pic_bbox[0], pic_bbox[1]
+                pic_x2, pic_y2 = pic_x1 + pic_bbox[2], pic_y1 + pic_bbox[3]
 
                 for cap in captions:
                     cap_bbox = cap['bbox']
                     cap_x1, cap_y1 = cap_bbox[0], cap_bbox[1]
                     cap_x2, cap_y2 = cap_x1 + cap_bbox[2], cap_y1 + cap_bbox[3]
 
-                    # Check containment (caption inside figure)
-                    if (cap_x1 >= fig_x1 and cap_y1 >= fig_y1 and
-                        cap_x2 <= fig_x2 and cap_y2 <= fig_y2):
+                    # Check containment (caption inside picture)
+                    if (cap_x1 >= pic_x1 and cap_y1 >= pic_y1 and
+                        cap_x2 <= pic_x2 and cap_y2 <= pic_y2):
 
                         entity_cap = self.resolver.resolve_entity(
                             f"caption_{cap['id']}",
                             modality="text"
                         )
-                        entity_fig = self.resolver.resolve_entity(
-                            f"figure_{fig['id']}",
+                        entity_pic = self.resolver.resolve_entity(
+                            f"picture_{pic['id']}",
                             modality="image"
                         )
 
                         relations.append(PRURelation(
                             entity_a_id=entity_cap,
-                            entity_b_id=entity_fig,
+                            entity_b_id=entity_pic,
                             pru_type="PRU-4",
                             confidence=1.0,
                             metadata={
                                 'source': 'real_doclaynet',
                                 'page': page_id,
                                 'child_klass': f"caption_{cap['id']}",
-                                'parent_id': f"figure_{fig['id']}",
+                                'parent_id': f"picture_{pic['id']}",
                                 'child_type': 'Caption',
-                                'parent_type': 'Figure'
+                                'parent_type': 'Picture'
                             }
                         ))
+
+            # PRU-4: Text blocks contained in page
+            for txt in texts:
+                entity_txt = self.resolver.resolve_entity(
+                    f"text_{txt['id']}",
+                    modality="text"
+                )
+                entity_page = self.resolver.resolve_entity(
+                    page_id,
+                    modality="image"
+                )
+
+                relations.append(PRURelation(
+                    entity_a_id=entity_txt,
+                    entity_b_id=entity_page,
+                    pru_type="PRU-4",
+                    confidence=1.0,
+                    metadata={
+                        'source': 'real_doclaynet',
+                        'page': page_id,
+                        'child_klass': f"text_{txt['id']}",
+                        'parent_id': page_id,
+                        'child_type': 'Text',
+                        'parent_type': 'Page'
+                    }
+                ))
 
         print(f"✓ Generated {len(relations)} real DocLayNet relations")
         return relations
@@ -1137,9 +1197,13 @@ class IndustrialKRBenchmark:
             relations = self.loader.load_cmapss_sensors(limit=limit)
             return self.benchmark_pru_3_7_causality(relations)
 
+        elif dataset_name == 'doclaynet':
+            relations = self.loader.load_doclaynet(limit=limit)
+            return self.benchmark_pru_4_containment(relations)
+
         else:
             print(f"❌ Unknown dataset: {dataset_name}")
-            print(f"   Available: lisa, rico, cmapss")
+            print(f"   Available: lisa, rico, cmapss, doclaynet")
             return {}
 
 

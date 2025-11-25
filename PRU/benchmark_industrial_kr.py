@@ -355,25 +355,30 @@ class IndustrialKRLoader:
 
     def load_doclaynet(self, limit=100):
         """
-        Load DocLayNet document layout dataset.
+        Load DocLayNet/OmniDocBench document layout dataset.
 
         Validates: PRU-1 (Co-presence), PRU-4 (Containment)
         Rules:
         - PRU-1: Elements on same page co-occur
-        - PRU-4: Captions contained in figures
+        - PRU-4: Captions contained in/related to figures
         """
-        print(f"Loading DocLayNet Layouts (limit={limit})...")
+        print(f"Loading Document Layouts (limit={limit})...")
 
-        # Check if real data exists
-        data_path = Path.home() / "Descargas" / "Datasets" / "DocLayNet"
-        annotations_file = data_path / "COCO" / "val.json"
+        # Check if OmniDocBench exists (preferred - has relationships)
+        omnidoc_path = Path.home() / "Descargas" / "Datasets" / "OmniDocBench" / "OmniDocBench.json"
+        if omnidoc_path.exists():
+            print("   Using OmniDocBench (1,355 pages with rich annotations)")
+            return self._load_omnidocbench(omnidoc_path, limit)
 
-        if not annotations_file.exists():
-            print("⚠️  DocLayNet dataset not found, using synthetic fallback")
-            return self._synthetic_document_layout(limit)
+        # Fallback to DocLayNet COCO
+        doclaynet_path = Path.home() / "Descargas" / "Datasets" / "DocLayNet" / "COCO" / "val.json"
+        if doclaynet_path.exists():
+            print("   Using DocLayNet COCO")
+            return self._load_real_doclaynet(doclaynet_path, limit)
 
-        # Load real DocLayNet data
-        return self._load_real_doclaynet(annotations_file, limit)
+        # Synthetic fallback
+        print("⚠️  No real dataset found, using synthetic fallback")
+        return self._synthetic_document_layout(limit)
 
     def _synthetic_document_layout(self, limit=100):
         """
@@ -432,6 +437,126 @@ class IndustrialKRLoader:
             ))
 
         print(f"✓ Generated {len(relations)} synthetic DocLayNet relations")
+        return relations
+
+    def _load_omnidocbench(self, json_file: Path, limit: int):
+        """
+        Load real OmniDocBench with relationship annotations.
+
+        Format:
+        [
+          {
+            "layout_dets": [
+              {
+                "category_type": "figure" | "figure_caption" | "text_block" | ...,
+                "poly": [x1, y1, x2, y2, x3, y3, x4, y4],  # bounding box as polygon
+                "anno_id": 123,
+                "text": "...",
+                ...
+              }
+            ],
+            "extra": {
+              "relation": [
+                {
+                  "source_anno_id": 6,  # figure
+                  "target_anno_id": 7   # caption
+                }
+              ]
+            },
+            "page_info": {...}
+          }
+        ]
+        """
+        print(f"   Loading OmniDocBench from {json_file}")
+
+        with open(json_file, 'r') as f:
+            data = json.load(f)
+
+        print(f"   Found {len(data)} pages")
+
+        relations = []
+        pages_processed = 0
+
+        for page in data[:limit]:
+            if pages_processed >= limit:
+                break
+
+            page_id = page['page_info']['image_path']
+
+            # Build annotation index
+            anno_by_id = {}
+            for det in page['layout_dets']:
+                anno_by_id[det['anno_id']] = det
+
+            # PRU-1: Co-presence (figure ~ caption on same page)
+            figures = [d for d in page['layout_dets'] if d['category_type'] == 'figure']
+            captions = [d for d in page['layout_dets'] if d['category_type'] == 'figure_caption']
+
+            for fig in figures:
+                for cap in captions:
+                    entity_fig = self.resolver.resolve_entity(
+                        f"figure_{fig['anno_id']}_{page_id}",
+                        modality="image"
+                    )
+                    entity_cap = self.resolver.resolve_entity(
+                        f"caption_{cap['anno_id']}_{page_id}",
+                        modality="text"
+                    )
+
+                    relations.append(PRURelation(
+                        entity_a_id=entity_fig,
+                        entity_b_id=entity_cap,
+                        pru_type="PRU-1",
+                        confidence=1.0,
+                        metadata={
+                            'source': 'real_omnidocbench',
+                            'page': page_id,
+                            'entity_a_text': f"figure_{fig['anno_id']}",
+                            'entity_b_text': cap.get('text', f"caption_{cap['anno_id']}"),
+                            'type_a': 'figure',
+                            'type_b': 'figure_caption'
+                        }
+                    ))
+
+            # PRU-4: Containment from explicit relationships
+            if 'relation' in page.get('extra', {}):
+                for rel in page['extra']['relation']:
+                    source_id = rel['source_anno_id']
+                    target_id = rel['target_anno_id']
+
+                    if source_id in anno_by_id and target_id in anno_by_id:
+                        source = anno_by_id[source_id]
+                        target = anno_by_id[target_id]
+
+                        # Relationship: source (usually figure) contains/relates target (caption)
+                        entity_source = self.resolver.resolve_entity(
+                            f"{source['category_type']}_{source_id}_{page_id}",
+                            modality="image" if "figure" in source['category_type'] else "text"
+                        )
+                        entity_target = self.resolver.resolve_entity(
+                            f"{target['category_type']}_{target_id}_{page_id}",
+                            modality="text"
+                        )
+
+                        relations.append(PRURelation(
+                            entity_a_id=entity_target,  # caption
+                            entity_b_id=entity_source,  # figure (container)
+                            pru_type="PRU-4",
+                            confidence=1.0,
+                            metadata={
+                                'source': 'real_omnidocbench',
+                                'page': page_id,
+                                'child_klass': target['category_type'],
+                                'parent_id': source['category_type'],
+                                'child_text': target.get('text', ''),
+                                'relation_type': 'explicit'
+                            }
+                        ))
+
+            pages_processed += 1
+
+        print(f"   Processed {pages_processed} pages")
+        print(f"✓ Generated {len(relations)} real OmniDocBench relations")
         return relations
 
     def _load_real_doclaynet(self, annotations_file: Path, limit: int):

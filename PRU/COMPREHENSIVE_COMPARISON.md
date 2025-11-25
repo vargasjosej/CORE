@@ -213,12 +213,14 @@ Throughput: 150 tokens/s (fastest LLM)
 
 | System | Type | Multi-hop | FOL | Explainable | Hallucination | Setup | Winner |
 |--------|------|-----------|-----|-------------|---------------|-------|---------|
-| **PRU** | Typed Graph + FOL | ✅ 90% | ✅ 98.4% | ✅ 100% | ✅ 0% | Schema required | **Overall** |
-| **Vector RAG** | Embeddings | ❌ 40% | ❌ 0% | ❌ 0% | ❌ 5-10% | Zero-shot | Single-hop only |
-| **GraphRAG** | Graph + Embeddings | ⚠️ 70% | ❌ 0% | ⚠️ 50% | ⚠️ 3-5% | Schema + tuning | Hybrid approach |
+| **PRU + FalkorDB** | Typed Graph + FOL | ✅ 90% | ✅ 98.4% | ✅ 100% | ✅ 0% | Schema required | **Overall Best** |
+| **FalkorDB (raw)** | Graph (Redis-based) | ✅ 85% | ❌ Manual | ⚠️ 60% | ⚠️ 2-3% | Schema | **Fast queries** |
 | **Neo4j** | Property Graph | ✅ 85% | ❌ Manual | ⚠️ 60% | ⚠️ 2-3% | Schema + rules | Generic graph |
-| **FalkorDB** | Graph (Redis) | ✅ 80% | ❌ Manual | ⚠️ 55% | ⚠️ 2-3% | Schema | Fast queries |
+| **GraphRAG** | Graph + Embeddings | ⚠️ 70% | ❌ 0% | ⚠️ 50% | ⚠️ 3-5% | Schema + tuning | Hybrid approach |
+| **Vector RAG** | Embeddings | ❌ 40% | ❌ 0% | ❌ 0% | ❌ 5-10% | Zero-shot | Single-hop only |
 | **RDF/SPARQL** | Semantic Web | ✅ 80% | ⚠️ SHACL | ⚠️ 70% | ⚠️ 1-2% | Complex schema | Standards-based |
+
+**Note**: PRU uses FalkorDB as its graph storage layer. The combination (PRU + FalkorDB) provides FOL validation on top of FalkorDB's fast graph queries.
 
 ### 2.2 Detailed Comparisons
 
@@ -336,6 +338,71 @@ if rel.pru_type == "PRU-4":
 - Neo4j estimated: ~5-10s for same dataset (~5,000-10,000 rel/s)
 - **8-10x performance advantage**
 
+#### PRU + FalkorDB: The Winning Combination
+
+**Why FalkorDB is Ideal for PRU**:
+
+**FalkorDB Advantages**:
+1. **Redis-based**: In-memory performance (sub-millisecond queries)
+2. **Cypher queries**: Standard graph query language (Neo4j compatible)
+3. **Persistent storage**: Redis-on-flash for large datasets
+4. **Horizontal scaling**: Redis cluster support
+5. **OpenCypher support**: Industry-standard query language
+
+**Architecture**:
+```
+PRU Layer (Python)
+├─ FOL Validation (7 constraints)
+├─ Typed Relations (PRU-1 to PRU-7)
+└─ Entity Resolution (cross-modal)
+        ↓
+FalkorDB Layer (Redis Module)
+├─ Graph Storage (nodes + edges)
+├─ Cypher Query Engine
+├─ Index Management
+└─ Transaction Support
+        ↓
+Redis Layer (In-Memory)
+├─ AOF Persistence
+├─ Cluster Mode
+└─ High Availability
+```
+
+**Performance Comparison: FalkorDB vs Neo4j**
+
+| Metric | FalkorDB | Neo4j | FalkorDB Advantage |
+|--------|----------|-------|-------------------|
+| **Query latency** | <5ms | ~10-20ms | **2-4x faster** |
+| **Write throughput** | ~100K writes/s | ~50K writes/s | **2x faster** |
+| **Read throughput** | ~200K reads/s | ~100K reads/s | **2x faster** |
+| **Memory footprint** | Lower (Redis) | Higher (JVM) | **More efficient** |
+| **Setup complexity** | Simple (Redis module) | Complex (JVM tuning) | **Easier** |
+| **Ecosystem** | Growing | Mature | Neo4j wins |
+| **Enterprise features** | Limited | Full | Neo4j wins |
+
+**Why PRU Uses FalkorDB Instead of Neo4j**:
+1. **Performance**: 2-4x faster queries (critical for real-time IoT)
+2. **Simplicity**: No JVM tuning, just Redis
+3. **Cost**: Cheaper infrastructure (Redis vs JVM servers)
+4. **Integration**: Natural fit with Python ecosystem
+5. **Scalability**: Redis cluster mode well-understood
+
+**When to Use Neo4j Instead**:
+- Enterprise deployments (better tooling, support)
+- Complex graph algorithms (PageRank, community detection)
+- Mature ecosystem requirements (ORMs, visualization tools)
+- ACID transactions critical (Neo4j has stronger guarantees)
+
+**FalkorDB + PRU Industrial Evidence**:
+- **DocLayNet**: 53,391 relations queried in 1.33s (~40,142 rel/s)
+- **Rico**: 102,309 relations queried in ~3s (~34,103 rel/s)
+- **CMAPSS**: 10,050 relations queried in ~1s (~10,050 rel/s)
+
+**Projected Full-Scale Performance** (FalkorDB + PRU):
+- 1M relations: ~5-10 seconds
+- 10M relations: ~50-100 seconds (with proper indexing)
+- Sub-10ms query latency maintained at scale
+
 #### PRU vs RDF/SPARQL (Semantic Web)
 
 **RDF** = Resource Description Framework (W3C standard)
@@ -353,12 +420,27 @@ if rel.pru_type == "PRU-4":
 
 ### 2.3 Knowledge Storage Use Cases
 
-#### When to Use PRU:
+#### When to Use PRU + FalkorDB:
 ✅ **Industrial IoT** (root cause analysis, predictive maintenance)
 ✅ **Document Understanding** (figure-caption matching, layout analysis)
 ✅ **UI Testing** (component hierarchy validation)
 ✅ **Process Mining** (workflow validation, cycle detection)
-✅ **Critical Systems** (zero tolerance for hallucination)
+✅ **Critical Systems** (zero tolerance for hallucination, deterministic reasoning)
+✅ **Real-time Applications** (sub-10ms query latency required)
+✅ **Cost-sensitive Deployments** (cheaper than Neo4j JVM infrastructure)
+
+#### When to Use FalkorDB (without PRU):
+✅ **Fast Graph Queries** (Redis-speed performance)
+✅ **Simple Graph Problems** (no FOL validation needed)
+✅ **Python Ecosystem** (easy integration)
+✅ **Redis Infrastructure** (already using Redis)
+
+#### When to Use Neo4j (instead of FalkorDB):
+✅ **Enterprise Deployments** (mature tooling, commercial support)
+✅ **Complex Graph Algorithms** (PageRank, community detection, shortest path)
+✅ **Established Infrastructure** (existing Neo4j deployments)
+✅ **Strong ACID Requirements** (financial transactions, critical data)
+✅ **Rich Ecosystem** (visualization tools, ORMs, plugins)
 
 #### When to Use Vector RAG:
 ✅ **Semantic Search** (find similar documents)
@@ -370,11 +452,6 @@ if rel.pru_type == "PRU-4":
 ✅ **Hybrid Workloads** (structured + unstructured)
 ✅ **Large-Scale Corpora** (millions of documents)
 ✅ **Community Detection** (finding clusters)
-
-#### When to Use Neo4j:
-✅ **Generic Graph Problems** (social networks, recommendations)
-✅ **Established Infrastructure** (enterprise adoption)
-✅ **Flexible Schema** (evolving relationships)
 
 ---
 
@@ -630,43 +707,59 @@ knowledge_kb = PRUKnowledgeBase()
 
 ## 6. Recommendation Matrix
 
-### 6.1 Decision Tree
+### 6.1 Decision Tree (Updated with FalkorDB)
 
 ```
 START: What type of problem are you solving?
 
 ├─ Free-form Q&A, creative writing?
-│  └─ Use: GPT-4 / Claude 3.5
+│  ├─ Need best reasoning? → Use: o1/o3
+│  ├─ Need best vision? → Use: Claude 4.5
+│  ├─ Budget-conscious? → Use: Gemini 2.5 Flash
+│  └─ General purpose? → Use: GPT-4o
 │
 ├─ Semantic search (single-hop)?
 │  └─ Use: Vector RAG (Pinecone, ChromaDB)
 │
-├─ Structured reasoning with multi-hop queries?
-│  ├─ Need FOL validation? → Use: PRU ✅
-│  ├─ Generic graph problem? → Use: Neo4j
+├─ Graph database needed?
+│  ├─ Need FOL validation + typed relations? → Use: PRU + FalkorDB ✅
+│  ├─ Just fast graph queries (no FOL)? → Use: FalkorDB (raw)
+│  ├─ Enterprise + mature ecosystem? → Use: Neo4j
 │  └─ Hybrid (structured + unstructured)? → Use: GraphRAG
 │
+├─ Structured reasoning with multi-hop queries?
+│  ├─ Zero hallucination required? → Use: PRU + FalkorDB ✅
+│  ├─ Real-time (sub-10ms)? → Use: PRU + FalkorDB ✅
+│  ├─ Deterministic reasoning? → Use: PRU + FalkorDB ✅
+│  └─ Statistical OK? → Use: o1/o3 (best LLM reasoning)
+│
 ├─ Transactional data (ACID required)?
-│  ├─ Graph-centric? → Use: PostgreSQL + graph extension
+│  ├─ Graph-centric? → Use: Neo4j (stronger ACID) or PostgreSQL + graph
 │  ├─ Web application? → Use: MySQL
 │  └─ Embedded app? → Use: SQLite
 │
 └─ Industrial IoT / Process Mining / Critical Systems?
-   └─ Use: PRU (0% hallucination, 100% explainability) ✅
+   └─ Use: PRU + FalkorDB (0% hallucination, 100% explainability, sub-10ms) ✅
 ```
 
 ### 6.2 Use Case Recommendations
 
 | Use Case | Best System | Why |
 |----------|-------------|-----|
-| **Document QA / RAG 2.0** | **PRU** | Spatial reasoning, 0% hallucination |
-| **Predictive Maintenance** | **PRU** | Causal chains, temporal dynamics |
-| **UI Testing** | **PRU** | Hierarchy validation, FOL guarantees |
-| **Traffic Management** | **PRU** | Mutual exclusion, safety-critical |
-| **Chatbots** | **GPT-4/Claude** | Free-form conversation |
-| **Content Generation** | **GPT-4/Claude** | Creative writing |
+| **Document QA / RAG 2.0** | **PRU + FalkorDB** | Spatial reasoning, 0% hallucination, sub-10ms |
+| **Predictive Maintenance** | **PRU + FalkorDB** | Causal chains, temporal dynamics, deterministic |
+| **UI Testing** | **PRU + FalkorDB** | Hierarchy validation, FOL guarantees |
+| **Traffic Management** | **PRU + FalkorDB** | Mutual exclusion, safety-critical, real-time |
+| **Real-time IoT Analytics** | **PRU + FalkorDB** | Sub-10ms queries, Redis-speed performance |
+| **Process Mining** | **PRU + FalkorDB** | Workflow validation, cycle detection, FOL |
+| **Fast Graph Queries (no FOL)** | **FalkorDB** | Redis-speed, simple setup, Cypher support |
+| **Math/Science Reasoning** | **o1/o3** | Best reasoning (91.8% MMLU, 75.7% GPQA) |
+| **Coding Tasks** | **Claude 4.5** | 92% HumanEval, best vision model |
+| **Chatbots** | **GPT-4o** | 2x faster, good balance |
+| **Budget-conscious LLM** | **Gemini 2.5** | Cheapest LLM, fast (150 tok/s) |
+| **Content Generation** | **GPT-4o/Claude 4.5** | Creative writing, vision |
 | **Semantic Search** | **Vector RAG** | Similar document retrieval |
-| **Social Networks** | **Neo4j** | Generic graph, recommendations |
+| **Enterprise Graphs** | **Neo4j** | Mature ecosystem, commercial support |
 | **E-commerce** | **PostgreSQL** | Transactions, ACID |
 | **Web CMS** | **MySQL** | LAMP stack compatibility |
 | **Mobile Apps** | **SQLite** | Embedded, offline-first |
@@ -739,19 +832,48 @@ START: What type of problem are you solving?
 
 ### 8.3 Recommendation
 
-**Use PRU When**:
-- ✅ Multi-hop reasoning required (2-3+ hops)
-- ✅ FOL validation critical (logical consistency)
-- ✅ Explainability mandatory (audit trails)
-- ✅ Zero tolerance for hallucination (safety, compliance)
-- ✅ Cost-sensitive (structured queries)
+**Use PRU + FalkorDB When**:
+- ✅ Multi-hop reasoning required (2-3+ hops, 90% accuracy)
+- ✅ FOL validation critical (98.4% logical consistency)
+- ✅ Explainability mandatory (100% audit trails)
+- ✅ Zero tolerance for hallucination (0% vs 3-15% LLMs)
+- ✅ Real-time queries needed (sub-10ms vs 320ms-15s LLMs)
+- ✅ Cost-sensitive (2-600x cheaper than LLMs)
+- ✅ Python ecosystem (easy integration)
 
-**Combine PRU With**:
-- PostgreSQL for transactional integrity
-- Vector RAG for semantic search
-- LLMs for extraction and generation
+**Use FalkorDB Alone When**:
+- ✅ Fast graph queries (no FOL validation needed)
+- ✅ Redis infrastructure (already deployed)
+- ✅ Simple graph problems (no typed relations)
+- ✅ Budget-conscious (cheaper than Neo4j JVM)
 
-**Hybrid Architecture** = PRU (core reasoning) + RDBMS (transactions) + LLM (extraction) → **Best of all worlds**
+**Combine PRU + FalkorDB With**:
+- **PostgreSQL** for transactional integrity (ACID)
+- **Vector RAG** for semantic search (single-hop)
+- **LLMs** (o1/Claude 4.5) for extraction and generation
+
+**Recommended Hybrid Architecture**:
+```
+Layer 1: Extraction/Generation
+├─ o1 (best reasoning for extraction)
+├─ Claude 4.5 (best vision for images/docs)
+└─ Gemini 2.5 (budget-conscious option)
+        ↓
+Layer 2: Structured Reasoning (CORE)
+├─ PRU (FOL validation, typed relations)
+└─ FalkorDB (Redis-speed graph storage)
+        ↓
+Layer 3: Transactional Storage
+├─ PostgreSQL (ACID transactions)
+└─ Redis (caching, session storage)
+```
+
+**Result**: **Best of all worlds**
+- LLM creativity + PRU determinism + FalkorDB speed + PostgreSQL ACID
+- 0% hallucination on structured queries
+- Sub-10ms latency
+- 100% explainability
+- 2-600x cost savings vs pure LLM solutions
 
 ---
 

@@ -682,6 +682,194 @@ class IndustrialKRLoader:
         print(f"✓ Generated {len(relations)} real DocLayNet relations")
         return relations
 
+    def load_cmapss_sensors(self, limit=100):
+        """
+        Load NASA CMAPSS turbofan sensor degradation data.
+
+        Generates:
+        - PRU-3 (Modulation/Causality): temp_sensor ⇝ vibration_sensor
+        - PRU-7 (Temporal Dynamics): sensor_t ↝ sensor_t+1
+
+        Dataset: https://www.kaggle.com/datasets/behrad3d/nasa-cmaps
+        Paper: Saxena et al., NASA 2008
+        """
+        print(f"Loading CMAPSS Turbofan Sensors (limit={limit})...")
+
+        # Check if real CMAPSS dataset exists
+        cmapss_path = Path.home() / "Descargas" / "Datasets" / "CMAPSS" / "CMaps" / "train_FD001.txt"
+
+        if cmapss_path.exists():
+            print("   Using REAL CMAPSS dataset")
+            return self._load_real_cmapss(cmapss_path, limit)
+        else:
+            print("⚠️  No real dataset found, using synthetic fallback")
+            return self._synthetic_sensors(limit)
+
+    def _load_real_cmapss(self, data_file: Path, limit: int):
+        """
+        Load real CMAPSS turbofan sensor degradation data.
+
+        PRU-3 Relations (Causality):
+        - temp_sensor ⇝ vibration_sensor (high temp causes vibration)
+
+        PRU-7 Relations (Temporal Dynamics):
+        - sensor_t ↝ sensor_t+1 (degradation evolution)
+        """
+        import pandas as pd
+        import numpy as np
+
+        # Column names (26 total)
+        columns = ['unit_id', 'cycle', 'setting1', 'setting2', 'setting3'] + \
+                  [f'sensor{i}' for i in range(1, 22)]
+
+        # Load data (space-separated)
+        df = pd.read_csv(data_file, sep=r'\s+', header=None, names=columns)
+
+        print(f"   Loaded {len(df)} cycles from {df['unit_id'].nunique()} engine units")
+
+        relations = []
+
+        # Group by unit_id
+        for unit_id, unit_data in df.groupby('unit_id'):
+            if len(relations) >= limit:
+                break
+
+            # Sort by cycle
+            unit_data = unit_data.sort_values('cycle').reset_index(drop=True)
+
+            # PRU-3: Causal relations (temperature → vibration)
+            # Sensor columns: sensor1-sensor21
+            # We'll use sensor3 (total temp) → sensor4 (total pressure)
+            # and look for degradation patterns
+
+            for i in range(len(unit_data) - 5):  # Need window for causality
+                row_current = unit_data.iloc[i]
+                row_next = unit_data.iloc[i + 5]  # 5 cycles ahead
+
+                # Check if temperature increase causes vibration/pressure change
+                temp_current = row_current['sensor3']
+                temp_next = row_next['sensor3']
+                pressure_current = row_current['sensor4']
+                pressure_next = row_next['sensor4']
+
+                temp_delta = temp_next - temp_current
+                pressure_delta = pressure_next - pressure_current
+
+                # If temperature increases significantly AND pressure changes
+                if abs(temp_delta) > 0.5 and abs(pressure_delta) > 0.5:
+                    entity_temp = self.resolver.resolve_entity(
+                        f"temp_sensor_u{unit_id}_c{row_current['cycle']}",
+                        modality="text"
+                    )
+                    entity_pressure = self.resolver.resolve_entity(
+                        f"pressure_sensor_u{unit_id}_c{row_next['cycle']}",
+                        modality="text"
+                    )
+
+                    relations.append(PRURelation(
+                        entity_a_id=entity_temp,
+                        entity_b_id=entity_pressure,
+                        pru_type="PRU-3",  # Modulation/Causality
+                        confidence=0.8,
+                        metadata={
+                            'source': 'real_cmapss',
+                            'unit_id': int(unit_id),
+                            'cycle_from': int(row_current['cycle']),
+                            'cycle_to': int(row_next['cycle']),
+                            'cause_sensor': 'sensor3_temp',
+                            'effect_sensor': 'sensor4_pressure',
+                            'cause_value': float(temp_current),
+                            'effect_value': float(pressure_next),
+                            'temp_delta': float(temp_delta),
+                            'pressure_delta': float(pressure_delta)
+                        }
+                    ))
+
+                    if len(relations) >= limit:
+                        break
+
+            # PRU-7: Temporal dynamics (sensor evolution)
+            # Track how sensor readings evolve over time
+            for i in range(len(unit_data) - 1):
+                row_current = unit_data.iloc[i]
+                row_next = unit_data.iloc[i + 1]
+
+                # Track sensor1 evolution (fan inlet temperature)
+                sensor_current = row_current['sensor1']
+                sensor_next = row_next['sensor1']
+
+                entity_t = self.resolver.resolve_entity(
+                    f"sensor1_u{unit_id}_c{row_current['cycle']}",
+                    modality="text"
+                )
+                entity_t_plus_1 = self.resolver.resolve_entity(
+                    f"sensor1_u{unit_id}_c{row_next['cycle']}",
+                    modality="text"
+                )
+
+                relations.append(PRURelation(
+                    entity_a_id=entity_t,
+                    entity_b_id=entity_t_plus_1,
+                    pru_type="PRU-7",  # Temporal Dynamics
+                    confidence=1.0,
+                    metadata={
+                        'source': 'real_cmapss',
+                        'unit_id': int(unit_id),
+                        'cycle_from': int(row_current['cycle']),
+                        'cycle_to': int(row_next['cycle']),
+                        'sensor_name': 'sensor1',
+                        'value_from': float(sensor_current),
+                        'value_to': float(sensor_next),
+                        'delta': float(sensor_next - sensor_current)
+                    }
+                ))
+
+                if len(relations) >= limit * 2:  # Allow more for PRU-7
+                    break
+
+            if len(relations) >= limit * 2:
+                break
+
+        # Count by type
+        pru3_count = len([r for r in relations if r.pru_type == "PRU-3"])
+        pru7_count = len([r for r in relations if r.pru_type == "PRU-7"])
+
+        print(f"✓ Generated {len(relations)} real CMAPSS relations:")
+        print(f"   - {pru3_count} PRU-3 (causal: temp → pressure)")
+        print(f"   - {pru7_count} PRU-7 (temporal: sensor evolution)")
+
+        return relations
+
+    def _synthetic_sensors(self, limit: int):
+        """Fallback: Generate synthetic sensor causality data."""
+        print("   Generating synthetic sensor data...")
+        relations = []
+
+        for i in range(limit):
+            # Synthetic causal chain: temp → vibration → wear → failure
+            entity_temp = self.resolver.resolve_entity(
+                f"temp_sensor_{i}",
+                modality="text"
+            )
+            entity_vibration = self.resolver.resolve_entity(
+                f"vibration_sensor_{i}",
+                modality="text"
+            )
+
+            relations.append(PRURelation(
+                entity_a_id=entity_temp,
+                entity_b_id=entity_vibration,
+                pru_type="PRU-3",
+                confidence=0.9,
+                metadata={
+                    'source': 'synthetic_sensors',
+                    'chain': 'temp_to_vibration'
+                }
+            ))
+
+        print(f"✓ Generated {len(relations)} synthetic sensor relations")
+        return relations
+
 
 class IndustrialKRBenchmark:
     """Benchmark PRU on industrial KR datasets."""
@@ -821,6 +1009,112 @@ class IndustrialKRBenchmark:
             }
         }
 
+    def benchmark_pru_3_7_causality(self, relations: List[PRURelation]) -> Dict:
+        """
+        Benchmark PRU-3 (Causality) and PRU-7 (Temporal Dynamics) on sensor data.
+
+        Validates:
+        - PRU-3: Acyclicity (no causal loops)
+        - PRU-7: Temporal ordering (t < t+1)
+        """
+        print()
+        print("=" * 80)
+        print("PRU-3/PRU-7 CAUSALITY & TEMPORAL DYNAMICS BENCHMARK (CMAPSS Sensors)")
+        print("=" * 80)
+        print()
+
+        # Separate PRU-3 and PRU-7
+        pru3_relations = [r for r in relations if r.pru_type == "PRU-3"]
+        pru7_relations = [r for r in relations if r.pru_type == "PRU-7"]
+
+        print(f"Total relations: {len(relations)}")
+        print(f"  - PRU-3 (Causality): {len(pru3_relations)}")
+        print(f"  - PRU-7 (Temporal Dynamics): {len(pru7_relations)}")
+        print()
+
+        # Validate PRU-3 (acyclicity)
+        print("PRU-3 Causality Check (Acyclicity):")
+        cycles_found = []
+
+        # Build graph for cycle detection
+        graph = {}
+        for rel in pru3_relations:
+            if rel.entity_a_id not in graph:
+                graph[rel.entity_a_id] = []
+            graph[rel.entity_a_id].append(rel.entity_b_id)
+
+        # DFS cycle detection
+        def has_cycle(node, visited, rec_stack):
+            visited.add(node)
+            rec_stack.add(node)
+
+            if node in graph:
+                for neighbor in graph[node]:
+                    if neighbor not in visited:
+                        if has_cycle(neighbor, visited, rec_stack):
+                            return True
+                    elif neighbor in rec_stack:
+                        cycles_found.append(f"{node} -> {neighbor}")
+                        return True
+
+            rec_stack.remove(node)
+            return False
+
+        visited = set()
+        for node in graph:
+            if node not in visited:
+                has_cycle(node, visited, set())
+
+        if not cycles_found:
+            print("  ✅ PASSED (No causal loops)")
+        else:
+            print(f"  ❌ FAILED ({len(cycles_found)} cycles found)")
+            for cycle in cycles_found[:3]:
+                print(f"    - {cycle}")
+
+        print()
+
+        # Validate PRU-7 (temporal ordering)
+        print("PRU-7 Temporal Dynamics Check (Ordering):")
+        temporal_violations = []
+
+        for rel in pru7_relations:
+            cycle_from = rel.metadata.get('cycle_from', 0)
+            cycle_to = rel.metadata.get('cycle_to', 0)
+
+            # cycle_to must be > cycle_from
+            if cycle_to <= cycle_from:
+                temporal_violations.append(
+                    f"Unit {rel.metadata.get('unit_id')}: cycle {cycle_from} -> {cycle_to} (invalid)"
+                )
+
+        if not temporal_violations:
+            print("  ✅ PASSED (Temporal ordering valid)")
+        else:
+            print(f"  ❌ FAILED ({len(temporal_violations)} violations)")
+            for v in temporal_violations[:3]:
+                print(f"    - {v}")
+
+        print()
+
+        # Calculate statistics
+        pru3_passed = len(cycles_found) == 0
+        pru7_passed = len(temporal_violations) == 0
+
+        return {
+            'dataset': 'cmapss',
+            'pru_types': ['PRU-3', 'PRU-7'],
+            'total_relations': len(relations),
+            'pru3_relations': len(pru3_relations),
+            'pru7_relations': len(pru7_relations),
+            'pru3_acyclicity_passed': pru3_passed,
+            'pru7_temporal_ordering_passed': pru7_passed,
+            'violations': {
+                'pru3_cycles': cycles_found,
+                'pru7_temporal': temporal_violations
+            }
+        }
+
     def benchmark_dataset(self, dataset_name: str, pru_type: str = None, limit: int = 100):
         """
         Benchmark a specific dataset.
@@ -839,9 +1133,13 @@ class IndustrialKRBenchmark:
             relations = self.loader.load_rico_ui(limit=limit)
             return self.benchmark_pru_4_containment(relations)
 
+        elif dataset_name == 'cmapss':
+            relations = self.loader.load_cmapss_sensors(limit=limit)
+            return self.benchmark_pru_3_7_causality(relations)
+
         else:
             print(f"❌ Unknown dataset: {dataset_name}")
-            print(f"   Available: lisa, rico")
+            print(f"   Available: lisa, rico, cmapss")
             return {}
 
 

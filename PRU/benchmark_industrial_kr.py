@@ -353,6 +353,210 @@ class IndustrialKRLoader:
         print(f"✓ Generated {len(relations)} real Rico containment relations")
         return relations
 
+    def load_doclaynet(self, limit=100):
+        """
+        Load DocLayNet document layout dataset.
+
+        Validates: PRU-1 (Co-presence), PRU-4 (Containment)
+        Rules:
+        - PRU-1: Elements on same page co-occur
+        - PRU-4: Captions contained in figures
+        """
+        print(f"Loading DocLayNet Layouts (limit={limit})...")
+
+        # Check if real data exists
+        data_path = Path.home() / "Descargas" / "Datasets" / "DocLayNet"
+        annotations_file = data_path / "COCO" / "val.json"
+
+        if not annotations_file.exists():
+            print("⚠️  DocLayNet dataset not found, using synthetic fallback")
+            return self._synthetic_document_layout(limit)
+
+        # Load real DocLayNet data
+        return self._load_real_doclaynet(annotations_file, limit)
+
+    def _synthetic_document_layout(self, limit=100):
+        """
+        Synthetic document layout data for PRU-1 + PRU-4 testing.
+
+        Ground truth:
+        - Figure and caption co-occur on same page (PRU-1)
+        - Caption contained in figure region (PRU-4)
+        """
+        print(f"   Generating {limit} synthetic document layouts...")
+
+        relations = []
+
+        for i in range(limit):
+            page_id = f"page_{i}"
+
+            # Create document elements
+            figure_id = f"figure_{i}"
+            caption_id = f"caption_{i}"
+            text_id = f"text_{i}"
+            title_id = f"title_{i}"
+
+            # PRU-1: Co-presence (same page)
+            # Figure ∼ Caption (co-occur)
+            entity_figure = self.resolver.resolve_entity(figure_id, modality="image")
+            entity_caption = self.resolver.resolve_entity(caption_id, modality="text")
+
+            relations.append(PRURelation(
+                entity_a_id=entity_figure,
+                entity_b_id=entity_caption,
+                pru_type="PRU-1",  # Co-presence
+                confidence=1.0,
+                metadata={
+                    'source': 'synthetic_doclaynet',
+                    'page': page_id,
+                    'type_a': 'figure',
+                    'type_b': 'caption',
+                    'relation': 'co-presence'
+                }
+            ))
+
+            # PRU-4: Containment
+            # Caption ⊂ Figure (caption within figure bounding box)
+            relations.append(PRURelation(
+                entity_a_id=entity_caption,
+                entity_b_id=entity_figure,
+                pru_type="PRU-4",  # Containment
+                confidence=1.0,
+                metadata={
+                    'source': 'synthetic_doclaynet',
+                    'page': page_id,
+                    'child_type': 'caption',
+                    'parent_type': 'figure',
+                    'relation': 'containment'
+                }
+            ))
+
+        print(f"✓ Generated {len(relations)} synthetic DocLayNet relations")
+        return relations
+
+    def _load_real_doclaynet(self, annotations_file: Path, limit: int):
+        """
+        Load real DocLayNet COCO annotations.
+
+        COCO format:
+        {
+          "images": [{"id": 1, "file_name": "...", ...}],
+          "annotations": [{
+            "id": 1,
+            "image_id": 1,
+            "category_id": 1,  # 0-10 (caption, text, list, table, figure, etc.)
+            "bbox": [x, y, width, height],
+            ...
+          }],
+          "categories": [{"id": 1, "name": "caption"}, ...]
+        }
+        """
+        print(f"   Loading real DocLayNet from {annotations_file}")
+
+        try:
+            with open(annotations_file, 'r') as f:
+                coco_data = json.load(f)
+        except FileNotFoundError:
+            print(f"   ERROR: {annotations_file} not found")
+            return self._synthetic_document_layout(limit)
+
+        # Build category map
+        categories = {cat['id']: cat['name'] for cat in coco_data['categories']}
+
+        # Build image index
+        images = {img['id']: img for img in coco_data['images'][:limit]}
+
+        # Process annotations
+        annotations_by_image = {}
+        for ann in coco_data['annotations']:
+            img_id = ann['image_id']
+            if img_id in images:
+                if img_id not in annotations_by_image:
+                    annotations_by_image[img_id] = []
+                annotations_by_image[img_id].append(ann)
+
+        print(f"   Found {len(images)} images")
+        print(f"   Found {sum(len(v) for v in annotations_by_image.values())} annotations")
+
+        relations = []
+
+        # Generate PRU relations
+        for img_id, anns in list(annotations_by_image.items())[:limit]:
+            page_id = f"page_{img_id}"
+
+            # Group by category
+            figures = [a for a in anns if categories[a['category_id']] == 'Figure']
+            captions = [a for a in anns if categories[a['category_id']] == 'Caption']
+
+            # PRU-1: Co-presence (figure ∼ caption on same page)
+            for fig in figures:
+                for cap in captions:
+                    entity_fig = self.resolver.resolve_entity(
+                        f"figure_{fig['id']}",
+                        modality="image"
+                    )
+                    entity_cap = self.resolver.resolve_entity(
+                        f"caption_{cap['id']}",
+                        modality="text"
+                    )
+
+                    relations.append(PRURelation(
+                        entity_a_id=entity_fig,
+                        entity_b_id=entity_cap,
+                        pru_type="PRU-1",
+                        confidence=1.0,
+                        metadata={
+                            'source': 'real_doclaynet',
+                            'page': page_id,
+                            'entity_a_text': f"figure_{fig['id']}",
+                            'entity_b_text': f"caption_{cap['id']}",
+                            'type_a': 'Figure',
+                            'type_b': 'Caption'
+                        }
+                    ))
+
+            # PRU-4: Containment (check if caption bbox inside figure bbox)
+            for fig in figures:
+                fig_bbox = fig['bbox']  # [x, y, width, height]
+                fig_x1, fig_y1 = fig_bbox[0], fig_bbox[1]
+                fig_x2, fig_y2 = fig_x1 + fig_bbox[2], fig_y1 + fig_bbox[3]
+
+                for cap in captions:
+                    cap_bbox = cap['bbox']
+                    cap_x1, cap_y1 = cap_bbox[0], cap_bbox[1]
+                    cap_x2, cap_y2 = cap_x1 + cap_bbox[2], cap_y1 + cap_bbox[3]
+
+                    # Check containment (caption inside figure)
+                    if (cap_x1 >= fig_x1 and cap_y1 >= fig_y1 and
+                        cap_x2 <= fig_x2 and cap_y2 <= fig_y2):
+
+                        entity_cap = self.resolver.resolve_entity(
+                            f"caption_{cap['id']}",
+                            modality="text"
+                        )
+                        entity_fig = self.resolver.resolve_entity(
+                            f"figure_{fig['id']}",
+                            modality="image"
+                        )
+
+                        relations.append(PRURelation(
+                            entity_a_id=entity_cap,
+                            entity_b_id=entity_fig,
+                            pru_type="PRU-4",
+                            confidence=1.0,
+                            metadata={
+                                'source': 'real_doclaynet',
+                                'page': page_id,
+                                'child_klass': f"caption_{cap['id']}",
+                                'parent_id': f"figure_{fig['id']}",
+                                'child_type': 'Caption',
+                                'parent_type': 'Figure'
+                            }
+                        ))
+
+        print(f"✓ Generated {len(relations)} real DocLayNet relations")
+        return relations
+
 
 class IndustrialKRBenchmark:
     """Benchmark PRU on industrial KR datasets."""

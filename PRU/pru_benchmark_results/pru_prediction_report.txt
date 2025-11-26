@@ -1,0 +1,97 @@
+
+================================================================================
+REPORTE COMPARATIVO DE PREDICCIÓN PRU
+================================================================================
+
+📊 CONTEO DE PRUs POR MODELO
+----------------------------------------------------------------------
+Modelo                 PRU-1     PRU-2     PRU-3     PRU-4     PRU-5     PRU-6     PRU-7     TOTAL
+----------------------------------------------------------------------
+yolov8n                  422       582       146         3       139         4         0      1296
+yolov8s                  465       520       157         2       279         7         4      1434
+yolov8m                  511       291        84         3       182         7         0      1078
+florence2-base           516       151       127        17       328         6       110      1255
+
+📈 PRU POR FRAME (promedio)
+----------------------------------------------------------------------
+Modelo                 PRU-1     PRU-2     PRU-3     PRU-4     PRU-5     PRU-6     PRU-7
+----------------------------------------------------------------------
+yolov8n                 4.22      5.82      1.46      0.03      1.39      0.04      0.00
+yolov8s                 4.65      5.20      1.57      0.02      2.79      0.07      0.04
+yolov8m                 5.11      2.91      0.84      0.03      1.82      0.07      0.00
+florence2-base          5.16      1.51      1.27      0.17      3.28      0.06      1.10
+
+🎯 CONFIANZA PROMEDIO POR PRU
+----------------------------------------------------------------------
+
+yolov8n:
+  PRU-1: 0.619 (±0.122)
+  PRU-2: 1.000 (±0.000)
+  PRU-3: 0.728 (±0.078)
+  PRU-4: 0.326 (±0.022)
+  PRU-5: 1.000 (±0.000)
+  PRU-6: 0.513 (±0.161)
+
+yolov8s:
+  PRU-1: 0.611 (±0.119)
+  PRU-2: 0.997 (±0.028)
+  PRU-3: 0.735 (±0.078)
+  PRU-4: 0.515 (±0.159)
+  PRU-5: 1.000 (±0.000)
+  PRU-6: 0.476 (±0.087)
+  PRU-7: 0.400 (±0.000)
+
+yolov8m:
+  PRU-1: 0.610 (±0.115)
+  PRU-2: 1.000 (±0.000)
+  PRU-3: 0.716 (±0.080)
+  PRU-4: 0.611 (±0.048)
+  PRU-5: 1.000 (±0.000)
+  PRU-6: 0.479 (±0.067)
+
+florence2-base:
+  PRU-1: 0.593 (±0.127)
+  PRU-2: 0.902 (±0.156)
+  PRU-3: 0.718 (±0.105)
+  PRU-4: 0.812 (±0.190)
+  PRU-5: 1.000 (±0.000)
+  PRU-6: 0.483 (±0.099)
+  PRU-7: 0.704 (±0.231)
+
+
+🔍 ENTIDADES DETECTADAS
+----------------------------------------------------------------------
+
+yolov8n:
+  Total: 816
+  Tipos únicos: 5
+  Labels: skis, truck, car, person, bird
+
+yolov8s:
+  Total: 805
+  Tipos únicos: 7
+  Labels: handbag, surfboard, truck, car, person, frisbee, bird
+
+yolov8m:
+  Total: 747
+  Tipos únicos: 6
+  Labels: skateboard, truck, car, person, kite, skis
+
+florence2-base:
+  Total: 677
+  Tipos únicos: 7
+  Labels: street light, footwear, van, land vehicle, tripod, car, person
+
+
+================================================================================
+📋 CONCLUSIÓN
+================================================================================
+Mejor para PRU-1: florence2-base (516 relaciones)
+Mejor para PRU-2: yolov8n (582 relaciones)
+Mejor para PRU-3: yolov8s (157 relaciones)
+Mejor para PRU-4: florence2-base (17 relaciones)
+Mejor para PRU-5: florence2-base (328 relaciones)
+Mejor para PRU-6: yolov8s (7 relaciones)
+Mejor para PRU-7: florence2-base (110 relaciones)
+
+🏆 Mejor OVERALL: yolov8s (1434 PRUs totales)

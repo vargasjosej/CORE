@@ -10,7 +10,7 @@
 
 ## Abstract (250 words)
 
-**Problem**: While GraphRAG (Microsoft 2024) and Contextual Augmented Generation (CAG) have advanced semantic retrieval, they lack formal mechanisms to guarantee logical consistency. Current SOTA systems operate probabilistically, often accepting states that are semantically plausible but physically impossible (e.g., simultaneous red/green traffic signals or cyclic causal chains). In safety-critical domains (autonomous systems, industrial IoT, regulatory compliance), this probabilistic uncertainty is unacceptable.
+**Problem**: Current RAG systems—from Vector RAG to GraphRAG (2024) to Agentic RAG (2025 SOTA)—lack formal mechanisms to guarantee logical consistency. Even advanced multi-agent systems (LangGraph, AutoGen) operate probabilistically, accepting states that are semantically plausible but physically impossible (e.g., simultaneous red/green traffic signals, cyclic causal chains, backwards causality). In safety-critical domains (autonomous systems, industrial IoT, regulatory compliance), this probabilistic uncertainty is unacceptable.
 
 **Solution**: We introduce URP (Universal Relational Primitives), a bounded-deterministic neuro-symbolic layer that enforces First-Order Logic (FOL) constraints on neural extractions. URP acts as a "logic filter," accepting probabilistic outputs from vision-language models only when they satisfy topological and temporal invariants defined by 7 relational primitives.
 
@@ -21,7 +21,7 @@
 2. **Comparative Analysis**: On the CMAPSS dataset, URP reconstructed exact causal paths (78% accuracy, 94% precision) with 100% temporal FOL consistency, addressing architectural limitations of GraphRAG's narrative summarization approach (detailed architectural comparison in §5.5).
 3. **Cost-Efficiency**: For repetitive structural queries, URP reduces computational costs by orders of magnitude (>100,000x vs. CAG) by shifting the burden from inference-time attention to ingestion-time validation.
 
-**Impact**: We position URP not as a replacement for semantic search, but as an essential audit layer for RAG systems, providing the first verifiable audit trail for rejected hallucinations in industrial workflows.
+**Impact**: We position URP as a **validation tool compatible with any RAG architecture** (Vector, Graph, Hybrid, or Agentic). URP can be integrated as a preprocessing step, postprocessing filter, or agent tool in Agentic RAG frameworks (LangGraph, AutoGen). This is the first FOL validation layer designed for modern multi-agent RAG systems, providing verifiable audit trails for safety-critical applications.
 
 ---
 
@@ -347,6 +347,107 @@ FOL Validation:
 | **Streaming Data (IoT)** | ✅ Yes | ⚠️ Expensive | ❌ Context limit | ✅ Yes |
 
 **Key Insight**: URP is not a general-purpose replacement for GraphRAG or CAG. It's a **specialized safety layer** for applications where logical consistency is non-negotiable (autonomous systems, regulatory compliance, process mining).
+
+---
+
+### 2.9 Agentic RAG and Hybrid Architectures (2025 SOTA)
+
+**Critical Update**: Since GraphRAG's release (2024), production systems have evolved toward **Hybrid RAG** and **Agentic RAG** architectures.
+
+#### RAG Evolution Hierarchy (2025)
+
+| Level | Technology | Description | Production Status |
+|-------|-----------|-------------|-------------------|
+| **Level 1** | Vector RAG | Semantic similarity search | Baseline (fast but limited) |
+| **Level 2** | GraphRAG (Microsoft 2024) | Graph + community summaries | Research prototype |
+| **Level 3** | LightRAG / FastGraphRAG | Optimized graph retrieval | Production (cost-efficient) |
+| **Level 4** | **Agentic RAG** | Multi-tool agents (vectors + graphs + tools) | **Current SOTA** |
+
+#### Hybrid RAG (Production Standard 2025)
+
+**Architecture**:
+```
+User Query
+    ↓
+Router (LLM-based decision)
+    ├→ Vector Search (for "who", "when", "where" queries)
+    ├→ Graph Traversal (for "how relates", "global impact" queries)
+    └→ Web Search / APIs (for real-time data)
+```
+
+**Examples**:
+- LangChain: `MultiQueryRetriever` + Neo4j integration
+- LlamaIndex: `QueryFusionRetriever` with graph + vector backends
+- Microsoft Copilot: Hybrid vector + knowledge graph architecture
+
+#### Agentic RAG (SOTA 2025)
+
+**Key Innovation**: LLM agent orchestrates multiple tools instead of fixed retrieval pipeline.
+
+**Agent Toolbox**:
+1. **Vector Search Tool**: Fast semantic retrieval
+2. **Graph Traversal Tool**: Structured multi-hop queries
+3. **Web Search Tool**: Real-time information
+4. **Code Execution Tool**: Dynamic computation
+5. **URP Validation Tool** ← **Our Contribution**
+
+**Frameworks**:
+- **LangGraph** (LangChain agentic workflows)
+- **AutoGen** (Microsoft multi-agent systems)
+- **CrewAI** (specialized agent teams)
+
+#### URP Positioning in 2025 SOTA
+
+**URP is NOT**:
+- ❌ A complete RAG system
+- ❌ A replacement for GraphRAG or Vector RAG
+- ❌ A new "Level 5" in the hierarchy
+
+**URP IS**:
+- ✅ A **validation tool** compatible with ANY RAG architecture
+- ✅ A **safety layer** that Agentic RAG agents can invoke
+- ✅ A **FOL constraint checker** missing from all current SOTA systems
+
+**Integration Example** (LangGraph + URP):
+```python
+from langgraph.prebuilt import ToolNode
+from urp_detector import URPValidationTool
+
+# Agent defines tools
+tools = [
+    VectorSearchTool(),
+    GraphTraversalTool(),
+    URPValidationTool(),  # ← FOL validation
+    WebSearchTool()
+]
+
+# Agent workflow
+agent = create_react_agent(model, tools)
+
+# Query: "Did temperature cause failure in Engine #42?"
+response = agent.invoke(query)
+# Agent autonomously:
+# 1. Uses GraphTraversalTool → finds causal path
+# 2. Uses URPValidationTool → validates time(temp) < time(failure)
+# 3. Returns validated answer with audit trail
+```
+
+#### Comparison: URP vs SOTA 2025
+
+| Feature | LightRAG | Hybrid RAG | Agentic RAG | URP (Ours) |
+|---------|----------|------------|-------------|------------|
+| **Architecture** | Optimized graph | Router + multi-backend | LLM orchestrator | Validation layer |
+| **Cost** | 💰 Medium | 💰💰 High | 💰💰💰 Very High | 💰 Low (add-on) |
+| **FOL Validation** | ❌ No | ❌ No | ❌ No | ✅ Yes |
+| **Integration** | Standalone | Fixed pipeline | Agent tool | **Compatible with all** |
+| **Safety-Critical** | ⚠️ Limited | ⚠️ Limited | ⚠️ Depends on tools | ✅ Guaranteed (FOL) |
+
+**Key Insight**: URP fills a gap in **all** 2025 SOTA systems - none provide bounded-deterministic FOL validation. URP can be integrated as:
+- A preprocessing step (validate graph before indexing)
+- A postprocessing filter (validate retrieval results)
+- An agent tool (invoked during agentic workflows)
+
+**Future Work**: Demonstrate URP integration with LangGraph/AutoGen for Agentic RAG workflows (§7.4).
 
 ---
 
@@ -932,6 +1033,12 @@ The "Strict FOL" approach (0ms) flagged 3,344 violations. Manual review of 100 r
 - Autonomous vehicles: 50ms (prioritize safety, 97% precision)
 - Dataset cleaning: 100ms (balance safety and data retention, 94% precision)
 - Exploratory analysis: Use Vector RAG first, then URP validation as second pass
+
+**Figure 5.1**: Precision-Recall Trade-off Visualization (see `pru_benchmark_results/lisa_precision_recall_tradeoff.pdf`)
+
+![Precision-Recall Trade-off](pru_benchmark_results/lisa_precision_recall_tradeoff.png)
+
+**Implementation**: The `tolerance_ms` parameter is now implemented in `src/utils/anomaly_detector.py:49-76` with full documentation of trade-offs.
 
 **Detailed Violations**:
 ```

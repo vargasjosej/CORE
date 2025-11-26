@@ -1,6 +1,6 @@
-# PRU Knowledge Base
+# URP Knowledge Base
 
-**Multimodal Knowledge Representation using Primitive Relational Universals**
+**Multimodal Knowledge Representation using Universal Relational Primitives**
 
 [![Status](https://img.shields.io/badge/status-production--ready-brightgreen)]()
 [![Python](https://img.shields.io/badge/python-3.10+-blue)]()
@@ -10,19 +10,28 @@
 
 ---
 
-## 🎯 What is PRU?
+## 📖 Nomenclature
 
-**PRU (Primitive Relational Universals)** are 7 fundamental relationship types that can represent any knowledge:
+**URP** (Universal Relational Primitives) - English
+**PRU** (Primitivas Relacionales Universales) - Spanish
 
-| PRU | Type | Example |
+This documentation uses **URP** for consistency. Spanish documentation uses **PRU**.
+
+---
+
+## 🎯 What is URP?
+
+**URP (Universal Relational Primitives)** are 7 fundamental relationship types that can represent any knowledge:
+
+| URP | Type | Example |
 |-----|------|---------|
-| **PRU-1** | Co-presence | "car and person in same scene" |
-| **PRU-2** | Sequentiality | "open door → enter car" |
-| **PRU-3** | Modulation | "engine running → temperature rises" |
-| **PRU-4** | Containment | "car inside garage" |
-| **PRU-5** | Disjunction | "on ⊕ off" |
-| **PRU-6** | Perspective | "left/right depends on observer" |
-| **PRU-7** | Temporal | "temperature varies over time" |
+| **URP-1** | Co-presence | "car and person in same scene" |
+| **URP-2** | Sequentiality | "open door → enter car" |
+| **URP-3** | Modulation | "engine running → temperature rises" |
+| **URP-4** | Containment | "car inside garage" |
+| **URP-5** | Disjunction | "on ⊕ off" |
+| **URP-6** | Perspective | "left/right depends on observer" |
+| **URP-7** | Temporal | "temperature varies over time" |
 
 ---
 
@@ -81,9 +90,9 @@ See [QUICK_START.md](QUICK_START.md) for details.
 
 ---
 
-## 💡 Why PRU over Vector RAG?
+## 💡 Why URP over Vector RAG?
 
-| Feature | PRU RAG | Vector RAG |
+| Feature | URP RAG | Vector RAG |
 |---------|---------|------------|
 | **Temporal reasoning** | ✅ 100% | ❌ 50% |
 | **Causal reasoning** | ✅ 100% | ❌ 50% |
@@ -115,28 +124,28 @@ GOOGLE_API_KEY=AIzaSy...
 
 ## 🎮 Usage
 
-### Extract PRU from multimodal content
+### Extract URP from multimodal content
 
 ```python
 # Text
 from src.extractors.text_extractor import TextPRUExtractor
 relations = extractor.extract("The car is in the garage.")
-# → PRU-4: car CONTAINED_IN garage
+# → URP-4: car CONTAINED_IN garage
 
 # Image
-from src.extractors.image_extractor import ImagePRUExtractor  
+from src.extractors.image_extractor import ImagePRUExtractor
 relations = extractor.extract("image.jpg")
-# → PRU-1 (co-presence), PRU-4 (containment)
+# → URP-1 (co-presence), URP-4 (containment)
 
 # Video
 from src.extractors.video_extractor import VideoPRUExtractor
 relations = extractor.extract("video.mp4")
-# → PRU-2 (sequentiality)
+# → URP-2 (sequentiality)
 
 # Table
 from src.extractors.table_extractor import TablePRUExtractor
 relations = extractor.extract("data.csv")
-# → PRU-2 (temporal), PRU-3 (causality)
+# → URP-2 (temporal), URP-3 (causality)
 ```
 
 ### Query with natural language
@@ -158,10 +167,10 @@ print(response["cypher"])
 
 ## 📊 Performance
 
-**Accuracy** (PRU vs Vector RAG):
-- Temporal questions: PRU +50%
-- Causal questions: PRU +50%
-- Overall: PRU +25%
+**Accuracy** (URP vs Vector RAG):
+- Temporal questions: URP +50%
+- Causal questions: URP +50%
+- Overall: URP +25%
 
 **Cost** (100 docs):
 - Total: $0.33 ($0.30 Claude + $0.015 Gemini + $0.02 GPU)
@@ -208,7 +217,7 @@ Explainable Answer
 **Technical Details**:
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design
 - **[DISTRIBUTED_SETUP.md](DISTRIBUTED_SETUP.md)** - Multi-GPU deployment
-- **[RAG_COMPARISON_ANALYSIS.md](RAG_COMPARISON_ANALYSIS.md)** - PRU vs Vector RAG benchmark
+- **[RAG_COMPARISON_ANALYSIS.md](RAG_COMPARISON_ANALYSIS.md)** - URP vs Vector RAG benchmark
 - **[GEMINI_MODEL_COMPARISON.md](GEMINI_MODEL_COMPARISON.md)** - Validation model selection
 - **[STATUS.md](STATUS.md)** - Implementation status
 
@@ -229,12 +238,12 @@ Explainable Answer
   - 4/4 extractors (text, image, video, table)
   - Distributed GPU processing
   - FOL validation framework (7 constraints, 27 tests)
-  - PRU vs Vector RAG benchmarks
+  - URP vs Vector RAG benchmarks
 - [x] **Phase 2: FOL Validation & Industrial KR** (COMPLETE)
   - First-order logic consistency testing
   - Industrial KR dataset mapping
-  - LISA (PRU-5) synthetic ✅ 100% accuracy
-  - Rico (PRU-4) synthetic ✅ 100% accuracy
+  - LISA (URP-5) synthetic ✅ 100% accuracy
+  - Rico (URP-4) synthetic ✅ 100% accuracy
 - [ ] **Phase 3: Real Dataset Validation** (In Progress - 25%)
   - ✅ LISA real dataset downloaded (4.3GB, 43K frames)
   - ✅ LISA validation: 100% accuracy on 1,000 real frames

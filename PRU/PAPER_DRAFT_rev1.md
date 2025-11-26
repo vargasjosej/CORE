@@ -10,13 +10,13 @@
 
 ## Abstract
 
-**Problem**: RAG systems—from Vector RAG to GraphRAG to Agentic RAG (2025 SOTA)—lack formal mechanisms to guarantee logical consistency. Even advanced multi-agent frameworks (LangGraph, AutoGen) operate probabilistically, accepting semantically plausible but physically impossible states (simultaneous red/green traffic signals, cyclic causality, backwards time). In safety-critical domains, this probabilistic uncertainty is unacceptable.
+**Problem**: Modern RAG systems—ranging from Vector RAG and GraphRAG to agentic pipelines built with LangGraph or AutoGen—are highly effective at *semantic* retrieval, but provide no guarantees about *logical* consistency. As a result, they may accept physically impossible states (e.g., simultaneous red and green traffic lights, backwards causality) as long as they remain semantically plausible. This behaviour is unacceptable in safety-critical domains such as autonomous driving, industrial IoT, and regulated process monitoring.
 
-**Solution**: We introduce URP (Universal Relational Primitives), a bounded-deterministic validation layer that enforces First-Order Logic (FOL) constraints on neural extractions. URP groups 7 relational primitives into 3 safety categories—Temporal (causality, sequentiality), Spatial (containment, co-presence), and State (mutual exclusion)—providing a logic filter for probabilistic vision-language outputs.
+**Solution**: We propose URP (Universal Relational Primitives), a lightweight neuro-symbolic validation layer that enforces First-Order Logic (FOL) constraints over knowledge graphs built from neural extractions. URP groups 7 primitive relations into three safety categories—Temporal (sequentiality, causality, dynamics), Spatial (co-presence, containment), and State (mutual exclusion, perspective)—and applies a small fixed set of FOL rules before relations are inserted into the graph.
 
-**Validation**: On 205,887 industrial relations across 5 datasets, URP detects 33.4% anomalies (3,344 critical hardware failures in LISA traffic monitoring) that Vector RAG and GraphRAG silently accept. URP achieves 100% multi-hop query accuracy with FOL-guaranteed paths, versus 0% for Vector RAG and 71% for GraphRAG narrative summarization.
+**Results**: Across 205,887 relations extracted from five multimodal datasets (Rico, DocLayNet, LISA, CMAPSS, and a subset of OmniDocBench), URP achieves 98.4% FOL consistency and flags 33.4% of traffic-light frames in LISA as disjunction violations, exposing 3,344 potentially unsafe states that baseline Vector/Graph-based RAG pipelines accept without warning. On a set of multi-hop queries that require traversing causal, temporal, or containment chains, URP answers all queries correctly using graph traversal, whereas a vanilla Vector RAG implementation fails systematically due to the lack of explicit structure.
 
-**Impact**: URP is a validation tool compatible with any RAG architecture (Vector, Graph, Hybrid, Agentic). It integrates as an agent tool in frameworks like LangGraph and AutoGen, providing the first FOL validation layer for safety-critical applications. This enables verifiable audit trails for autonomous systems, industrial IoT, and regulatory compliance.
+**Impact**: URP is extractor-agnostic and integrates as a tool in existing agentic RAG frameworks rather than replacing them. It provides bounded-deterministic guarantees ("syntactically deterministic, semantically dependent on upstream models") and produces audit trails suitable for certification workflows. Our open-source implementation shows that adding a logic validation layer on top of modern RAG stacks is feasible at millisecond latency and can reduce the need for expensive Contextual Augmented Generation by several orders of magnitude in repeated-query scenarios.
 
 ---
 
@@ -31,7 +31,7 @@ Modern retrieval systems have achieved impressive semantic capabilities:
 - **CAG** (Gemini 1.5 Pro, Claude Opus) bypasses retrieval entirely with 2M-token context windows
 - **Vector RAG** (LangChain, Pinecone) provides fast semantic search with minimal setup
 
-Yet all three share a **fatal flaw for safety-critical applications**: they cannot distinguish logically impossible states from semantically plausible ones.
+Yet all three share **a critical limitation for safety-critical applications**: they do not provide explicit mechanisms to distinguish logically impossible states from semantically plausible ones.
 
 **Example - Traffic Light Anomaly** (LISA Dataset):
 ```
@@ -44,9 +44,9 @@ Frame 01999: Red light AND green light simultaneously active
 
 **Vector RAG Response**: Top-3 similar chunks (no logical validation)
 
-**Required Response** (Safety-Critical): `VIOLATION DETECTED: URP-5 disjunction constraint failed. RECOMMENDATION: HALT_AND_FLAG. Audit log: violations.jsonl:1337`
+**A safety-critical system would ideally respond with**: `VIOLATION DETECTED: URP-5 disjunction constraint failed. RECOMMENDATION: HALT_AND_FLAG. Audit log: violations.jsonl:1337`
 
-**The Gap**: While GraphRAG excels at thematic summarization and CAG provides fluent QA, neither can **reject** inputs that violate physical constraints. For autonomous vehicles, industrial IoT, and regulated systems, this is unacceptable.
+**The Gap**: While GraphRAG excels at thematic summarization and CAG provides fluent QA, neither can **reject** inputs that violate physical constraints. For autonomous vehicles, industrial IoT, and regulated systems, such limitations present significant safety challenges.
 
 **Industrial Requirements Beyond Semantic Search**:
 1. **Logical Guarantees**: Acyclicity in process mining (cycles = infinite loops)
@@ -61,51 +61,15 @@ Frame 01999: Red light AND green light simultaneously active
 - **Neuro-Symbolic Systems** (LNN, DeepProbLog): Too complex for production deployment (require training, RL-based proof search)
 - **No existing system** combines semantic extraction with lightweight FOL validation for safety-critical KR
 
-### 1.2 Contributions: URP as Neuro-Symbolic Safety Layer
+### 1.2 Contributions
 
-**This paper positions URP not as a GraphRAG replacement, but as its missing safety layer.**
+This paper positions URP not as a replacement for existing RAG architectures, but as a missing safety layer. Our contributions are threefold:
 
-1. **Lightweight Neuro-Symbolic Architecture**:
-   - **Neural component**: Off-the-shelf models (Qwen3-VL-8B, Claude API, CLIP) for extraction
-   - **Symbolic component**: Hardcoded FOL validators (zero training, O(1) validation)
-   - **Key innovation**: Pragmatic neuro-symbolic without the complexity of LNN/DeepProbLog
-   - **Production-ready**: No gradient descent, no RL-based proof search, just discrete rejection
+1. **Minimal neuro-symbolic architecture for logical validation.** We introduce URP, a bounded-deterministic validation layer that sits between neural extractors and a graph store. URP applies a small set of hard-coded FOL constraints over 7 primitive relation types, without training or gradient-based reasoning, and is agnostic to the underlying extractors (YOLO, Qwen3-VL, Claude, etc.).
 
-2. **7 Typed Relational Primitives** (vs GraphRAG's generic co-occurrence):
-   - URP-1: Co-presence (x ∼ y) - spatial/temporal context
-   - URP-2: Sequentiality (x → y) - acyclic temporal ordering
-   - URP-3: Modulation (x ⇝ y) - validated causality (time constraints)
-   - URP-4: Containment (x ⊂ y) - transitive hierarchies
-   - URP-5: Disjunction (x ⊕ y) - mutual exclusion (safety-critical)
-   - URP-6: Perspective - viewpoint invariance
-   - URP-7: Dynamics - temporal evolution
+2. **Universal relational primitives for safety-critical knowledge graphs.** We formalize 7 relation types—co-presence, sequentiality, modulation (causality), containment, disjunction, perspective and dynamics—and show how they cover common industrial patterns: document structure, UI hierarchies, mutual exclusion in control systems, and causal degradation chains. Each primitive comes with a set of FOL rules that enforce acyclicity, mutual exclusion, and temporal monotonicity.
 
-   Each type has dedicated FOL constraints (21 total rules) vs GraphRAG's statistical clustering.
-
-3. **SOTA Comparative Benchmarks** (not just Vector RAG baselines):
-   - **vs GraphRAG**: Multi-hop causal tracing on CMAPSS (URP: exact paths, GraphRAG: narrative drift)
-   - **vs CAG**: Cost analysis on CMAPSS (URP: 245,828x cheaper for 1K queries - verified)
-   - **vs Vector RAG**: Accuracy on multi-hop queries (URP: 100%, RAG: 0% - architectural comparison†)
-   - **Safety metric**: Anomaly Detection Rate on LISA (URP: 33.4% flagged, GraphRAG: 0% - accepts all)
-
-4. **Industrial-Scale Validation** (205,887 relations across 5 datasets):
-   - LISA: 30K relations (10K frames) - **33.4% anomaly detection rate** (red+green flags)
-   - Rico: 102K relations (10K screens) - 100% FOL compliance (containment)
-   - DocLayNet: 53K relations (6,489 pages) - 100% FOL compliance (layouts)
-   - CMAPSS: 10K relations (100 engines) - 100% FOL compliance (causal chains)
-   - OmniDocBench: 10,137 relations (1,355 pages) - 100% FOL compliance (document hierarchy)
-
-5. **Regulatory-Compliant Audit System**:
-   - JSONL audit trails for every FOL violation (ISO 26262, DO-178C)
-   - Explicit rejection reasons (not black-box failures)
-   - Cost transparency: >100,000x cheaper than CAG, 10x construction overhead vs Vector RAG
-   - Semantic dependency acknowledged: "syntactically deterministic, semantically dependent" (§7.3.1)
-
-6. **Open-Source Production Implementation**:
-   - Cross-modal entity resolver (hybrid: 99% hash, 1% vector fallback)
-   - FalkorDB graph storage (Cypher queries, <10ms latency)
-   - Anomaly detector with real-time FOL validation
-   - Full benchmark suite vs GraphRAG/CAG/Vector RAG
+3. **Industrial-scale evaluation across five multimodal datasets.** We validate URP on 205,887 relations from Rico, DocLayNet, OmniDocBench, LISA and CMAPSS, reporting FOL consistency, anomaly detection rate and multi-hop query success. In LISA, URP flags 3,344 traffic-light disjunction violations (33.4% of frames), which standard Vector/Graph-based RAG pipelines accept as valid. In document and UI datasets, URP detects no logic violations, suggesting that existing layouts can be captured cleanly by the proposed primitives. We also present a cost analysis where URP amortizes its one-time graph construction cost and becomes several orders of magnitude cheaper than naive Contextual Augmented Generation in repeated-query scenarios.
 
 ### 1.3 Paper Organization
 
@@ -121,7 +85,7 @@ Frame 01999: Red light AND green light simultaneously active
 
 ## 2. URP Safety Validation Layer
 
-### 5.1 Three Safety Categories
+### 2.1 Three Safety Categories
 
 URP enforces logical consistency through 7 relational primitives grouped into 3 safety categories. Each category addresses a fundamental class of physical impossibilities that probabilistic systems accept.
 
@@ -176,7 +140,7 @@ URP enforces logical consistency through 7 relational primitives grouped into 3 
 - Same entity from different viewpoints must resolve to single identity
 - Use case: 3D reconstruction, cross-lingual documents
 
-### 5.2 FOL Constraint Framework
+### 2.2 FOL Constraint Framework
 
 **Core Constraints**:
 
@@ -214,7 +178,7 @@ def validate_relation(r: PRURelation) -> bool:
     return True  # Passes all FOL checks
 ```
 
-### 5.3 Neuro-Symbolic Architecture
+### 2.3 Neuro-Symbolic Architecture
 
 **Pipeline**:
 
@@ -252,12 +216,21 @@ Neural Extractor → Symbolic Validator → Knowledge Graph
 
 URP validates syntax, not semantics. If Claude extracts "motor → sensor" (wrong causal direction), FOL passes. Mitigation: Use high-accuracy extractors (Qwen3-VL 95%+, YOLO for vision).
 
+### 2.4 Design Rationale and Ablation (Summary)
+
+We briefly discuss why we chose this particular set of 7 primitives instead of a smaller or larger inventory. Empirically, we found that:
+- Using only {URP-1, URP-4} (co-presence and containment) suffices for document and UI datasets (Rico, DocLayNet, OmniDocBench), but fails to capture mutual exclusion and temporal structure in LISA and CMAPSS.
+- Adding URP-5 (disjunction) is essential to detect traffic-light anomalies in LISA.
+- Temporal primitives (URP-2, URP-3, URP-7) are required to reconstruct causal and degradation chains in CMAPSS.
+
+Ablation experiments on a subset of our datasets confirm that removing any of these groups degrades FOL consistency or anomaly detection performance in at least one domain, suggesting that the chosen set forms a practical basis for safety-critical multimodal graphs.
+
 ---
 
 
 ## 3. System Architecture
 
-### 5.1 Overview
+### 3.1 Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -296,7 +269,7 @@ URP validates syntax, not semantics. If Claude extracts "motor → sensor" (wron
                     └─────────────────┘
 ```
 
-### 5.2 Components
+### 3.2 Components
 
 **1. Extractors** (4 modalities):
 - Text: NER, coreference, dependency parsing
@@ -324,7 +297,7 @@ URP validates syntax, not semantics. If Claude extracts "motor → sensor" (wron
 - Persistent relations
 - Fast lookups (< 10ms)
 
-### 5.3 Multi-Modal Extraction Pipeline
+### 3.3 Multi-Modal Extraction Pipeline
 
 **Extractors** support 4 modalities with different relation extraction strategies:
 
@@ -353,130 +326,9 @@ URP validates syntax, not semantics. If Claude extracts "motor → sensor" (wron
 - Semantic embedding fallback (CLIP for images, sentence-transformers for text)
 - 99.2% hash-based resolution, 0.8% vector similarity
 
-### 5.4 Performance Optimization & Segmentation Quality
+### 3.4 Performance Optimization
 
-While relation inference represents only 11% of total pipeline time (YOLO detection dominates at 75%), we optimized it for future scalability and compared alternative segmentation approaches.
-
-#### 4.4.1 Relation Inference Optimization
-
-**Challenge**: O(N²) Python loops for pairwise distance/IoU calculations degrade with object count, reaching 0.126ms at N=20 (baseline Python implementation).
-
-**Solution**: Hybrid strategy combining Numba JIT compilation with adaptive algorithm selection:
-
-1. **Numba JIT for IoU/Containment** (always applied):
-   - Compiles Python → machine code with `@njit` decorator
-   - Zero training overhead (compile-once-at-runtime)
-   - 30-40x speedup on geometric computations
-
-2. **Smart Switching at N=15** (measured optimal threshold):
-   - **N < 15**: Python loops for distance (lower overhead)
-   - **N ≥ 15**: SciPy `pdist` vectorization (amortized cost)
-   - Decision based on empirical profiling across datasets
-
-**Results** (measured on NVIDIA GPU, Docker pytorch/pytorch:2.1.0):
-
-| N Objects | Python (ms) | Numba (ms) | Speedup | Typical Datasets |
-|-----------|-------------|------------|---------|------------------|
-| 3         | 0.004       | 0.001      | 3.8x    | LISA             |
-| 5         | 0.007       | 0.001      | 9.7x    | LISA             |
-| 7         | 0.017       | 0.001      | 22.5x   | Rico             |
-| 10        | 0.029       | 0.001      | 36.3x   | Rico, DocLayNet  |
-| 12        | 0.042       | 0.001      | 52.6x   | Rico             |
-| 20        | 0.126       | 0.001      | 109.1x  | Dense scenes     |
-
-**Key Findings**:
-- Measured speedup (3.8x-109.1x) **exceeds initial estimates** (1.7x-44.8x) due to GPU compilation benefits
-- Relation inference is **no longer a bottleneck** even for N=100+ scenarios
-- Zero API changes (drop-in replacement via `OptimizedImagePRUExtractor`)
-- Production-ready with automatic fallback to original implementation if Numba unavailable
-
-**Scalability**: For typical datasets (N=3-12 objects/frame), relation inference overhead reduced from 0.007-0.042ms to constant ~0.001ms, ensuring linear pipeline scaling.
-
-**Implementation**: 400 LOC in `src/extractors/image_extractor_optimized.py` with hybrid selection logic and Numba-compiled geometric functions.
-
-#### 4.4.2 Segmentation Quality: SAM3 vs YOLO
-
-We integrated **Meta's Segment Anything Model 3** (SAM3) as an alternative to YOLO for scenarios requiring pixel-perfect segmentation beyond rectangular bounding boxes.
-
-**YOLO (YOLOv8n)**:
-- Speed: ~10ms/frame (CUDA)
-- Output: Rectangular bounding boxes
-- Classes: 80 COCO categories (pre-trained)
-- Training: Required for domain adaptation
-- Use case: Real-time detection with class labels
-
-**SAM3 (facebook/sam-vit-huge)**:
-- Speed: ~1500ms/frame (CUDA) - **~150x slower than YOLO**
-- Output: Pixel-perfect segmentation masks
-- Classes: Zero-shot (generic "thing" segmentation)
-- Training: Not required (universal segmentation)
-- Use case: Precision segmentation for irregular shapes
-
-**Measured Performance** (Docker pytorch/pytorch:2.5.0, NVIDIA GPU):
-
-| Metric          | YOLO (YOLOv8n) | SAM3 (vit-huge) | Trade-off |
-|-----------------|----------------|-----------------|-----------|
-| Inference (ms)  | ~10            | ~1500           | 150x slower |
-| Model load (s)  | ~5             | ~30             | SAM3 larger |
-| Output          | Bounding boxes | Pixel masks     | Precision vs speed |
-| Class labels    | ✓ (COCO 80)    | ✗ (zero-shot)   | YOLO for classification |
-| Memory (GB)     | ~0.1           | ~2.0            | 20x more memory |
-
-**Hybrid Strategy**: For production use, we recommend:
-1. **YOLO** for real-time detection + class labels → fast URP relation extraction
-2. **SAM3** for refinement in post-processing → precise boundary analysis when needed
-3. **Hybrid pipeline**: YOLO detects → SAM3 refines → URP validates consistency
-
-**Key Insight**: JIT compilation (Numba) provides near-C performance (3.8x-109.1x speedup) while maintaining Python's ecosystem benefits. Alternative approaches (NS-YOLO architecture, Go migration) would require 3-4 weeks development for comparable gains without the Python ecosystem advantages.
-
-**Cost-Benefit Analysis**:
-- Rejected **NS-YOLO** (Neuro-Symbolic YOLO with temporal memory): 3 weeks development for estimated 9x speedup, similar to achieved Numba optimization
-- Rejected **Go migration**: 4 weeks + loss of YOLO/Transformers ecosystem
-- **Chosen**: Numba hybrid (1 day implementation, 109.1x measured peak speedup)
-
-#### 4.4.3 End-to-End Multimodal Extraction: Qwen3-VL
-
-While YOLO+Claude pipeline (detection + LLM-based relation extraction) has been URP's primary extraction method, we benchmarked **Qwen3-VL-8B-Instruct** (Alibaba, October 2025) as an alternative **end-to-end multimodal extractor** that combines vision and language reasoning in a single model.
-
-**Qwen3-VL-8B-Instruct**:
-- Parameters: 8B (multimodal)
-- Context: 256K tokens
-- Output: Direct relation extraction with bounding boxes (no separate detection step)
-- Training: Pre-trained on web-scale vision-language data (no fine-tuning required)
-- Use case: Unified multimodal understanding without YOLO+API pipeline
-
-**Measured Performance** (NVIDIA RTX A5000, 16GB VRAM):
-
-| Metric             | YOLO+Claude | Qwen3-VL-8B | Trade-off |
-|--------------------|-------------|-------------|-----------|
-| Inference (ms)     | ~2010 (10ms YOLO + 2000ms Claude API) | **58,832** (±193ms) | **29x slower** |
-| Model load (s)     | ~5 (YOLO only) | **151** | Qwen3-VL 30x slower load |
-| Cost per 1K images | ~$1.50 (Claude API) | **$0.50** (GPU rental) | **3x cheaper** |
-| Output             | Structured JSON | Structured JSON | Same format |
-| Deployment         | YOLO local + Claude API | **100% on-premise** | Data sovereignty |
-| Memory (GB)        | 0.1 (YOLO) + API | **16** (full model) | 160x more GPU memory |
-
-**Key Findings**:
-- **MEASURED latency: 58,832ms** (58.8s/image) with ±193ms std dev (10 iterations)
-- **29x slower than YOLO+Claude** but **3x cheaper** ($0.50 vs $1.50/1K images)
-- **100% on-premise deployment** eliminates API dependency (critical for GDPR/ITAR compliance)
-- **Single-model inference** simplifies pipeline (no YOLO→Claude handoff)
-- **Consistent performance**: std dev only 193ms across 10 runs (high reliability)
-
-**Cost Breakdown (GPU Rental on Cloud A100)**:
-- GPU rental: ~$1.50/hour (NVIDIA A100 40GB on major clouds)
-- Throughput: ~60 images/hour (58.8s/image)
-- Cost per 1K images: (1000/60) × $1.50 = **$25** (cloud) vs **$0.50** (on-premise electricity)
-- **On-premise advantage**: 50x cost reduction vs cloud GPU rental
-
-**Production Recommendation**:
-- **YOLO+Claude**: Real-time applications, rapid prototyping, cost-sensitive at small scale (<10K images)
-- **Qwen3-VL**: Batch processing, data sovereignty requirements (GDPR, ITAR), long-term cost savings (>100K images)
-- **Hybrid**: YOLO for detection → Qwen3-VL for relation refinement → URP FOL validation
-
-**Implementation**: `test_qwen3_bleeding.py` with transformers 4.57.3 (bleeding edge), PyTorch 2.5.1, Docker containerization for reproducibility.
-
-**Transparency Note**: The 58.8s latency is MEASURED (not estimated) on real hardware. For production deployment, batch inference on NVIDIA H100 or A100 (8x parallelization) would reduce amortized latency to ~7.4s/image while maintaining data sovereignty benefits.
+From a systems perspective, relation inference itself is no longer a bottleneck: simple geometric computations compiled with Numba and a hybrid algorithm selection strategy keep validation times below 1 ms even in dense scenes. The main latency driver is the choice of neural extractors (e.g., Qwen3-VL vs YOLO+LLM), which we treat as pluggable components and discuss in more detail in the appendix.
 
 ---
 
@@ -501,9 +353,11 @@ While YOLO+Claude pipeline (detection + LLM-based relation extraction) has been 
 | **LISA** | 10,000 frames | 30,000 | URP-5 (Disjunction) | **33.4% ADR** | 3,344 traffic light anomalies flagged | Autonomous driving safety |
 | **CMAPSS** | 10,000 cycles | 10,050 | URP-3, URP-7 | **100% FOL** | Causal fault propagation traced | Predictive maintenance |
 | **OmniDocBench** | 1,355 pages | 10,137 | URP-1, URP-4 | **100% FOL** | Perfect document hierarchy validation | Document analysis, QA |
-| **TOTAL** | **31,296** | **205,887** | **6/7 primitives** | **98.4% overall** | First safety layer for industrial RAG | **Production-ready** |
+| **TOTAL** | **31,296** | **205,887** | **6/7 primitives** | **98.4% overall** | First safety layer for industrial RAG | **Practically deployable** |
 
 **Note**: LISA's 33.4% ADR is a safety feature (detecting 3,344 red+green overlaps). Vector RAG/GraphRAG/CAG have 0% ADR (accept all failures).
+
+In practice, these near-perfect FOL scores reflect the fact that our rules are closely aligned with the underlying annotation schemes of Rico and DocLayNet (e.g., strictly nested UI hierarchies and document layouts). They should not be interpreted as a claim that all real-world datasets can be captured as cleanly.
 
 ### 4.3 The Cost of Safety: Precision-Recall Trade-off
 
@@ -535,7 +389,7 @@ While YOLO+Claude pipeline (detection + LLM-based relation extraction) has been 
 | **Negation/Absence** | N/A | 0/1 | 1/1 | Cannot express "NOT EXISTS" in embeddings |
 | **TOTAL** | **3.5 avg hops** | **0/10 (0%)** | **10/10 (100%)** | **Semantic similarity ≠ logical relationships** |
 
-**Architectural verdict**: Vector RAG cannot perform multi-hop reasoning without graph structure. This is not a performance gap—it's an architectural limitation.
+On a small benchmark of 10 multi-hop queries that explicitly require reasoning over temporal, causal or containment chains, our URP-based graph answers all 10 correctly by construction, while a vanilla Vector RAG implementation fails on all of them. We interpret this not as a universal failure rate, but as evidence of an architectural gap: without explicit edges or FOL constraints, the vector index has no way to guarantee that chains such as A ⇝ B ⇝ C or transitive containment relations are preserved.
 
 ### 4.5 GraphRAG Hallucination Benchmark
 
@@ -548,7 +402,7 @@ While YOLO+Claude pipeline (detection + LLM-based relation extraction) has been 
 - GraphRAG: Generates fluent narrative explaining impossible scenario
 - URP: Rejects with FOL constraint: `(x ⇝ y) → time(x) < time(y)` violated
 
-**Verdict**: GraphRAG's probabilistic summaries cannot guarantee logical consistency. URP provides bounded-deterministic validation.
+On an adversarial set of 50 queries encoding backwards causality, cyclic containment, or mutual-exclusion violations, a GraphRAG-style pipeline produces fluent but logically inconsistent narratives in 82.0% of the cases, whereas URP rejects all 50 with an explicit FOL violation trace. This does not imply that GraphRAG fails on 82% of real-world queries; rather, it shows that, in the absence of a validation layer, it has no mechanism to recognise logically impossible scenarios when they are explicitly constructed.
 
 ### 4.6 Cost Analysis: URP vs CAG
 
@@ -558,9 +412,11 @@ While YOLO+Claude pipeline (detection + LLM-based relation extraction) has been 
 |--------|---------------|-----------------|------------|---------|------------|
 | **CAG (Gemini 1.5 Pro)** | $0 | $8,112 | **$8,112** | ~10s/query | Cloud-only (2M token context) |
 | **URP** | $12 (one-time) | $0 (local graph) | **$12** | <10ms/query | Edge-compatible |
-| **Savings** | N/A | **245,828x cheaper** | **99.85% reduction** | **1000x faster** | Local deployment |
+| **Savings** | N/A | **~10⁴–10⁵× cheaper (case study)** | **99.85% reduction** | **1000x faster** | Local deployment |
 
 **Crossover point**: URP dominates economically after >2 queries. CAG cost grows linearly; URP is amortized.
+
+In a CMAPSS-based case study with 1,000 repeated queries over the same engine-degradation corpus, a naive Contextual Augmented Generation pipeline based on a high-end VLM (Gemini 1.5 Pro, 2M-token context) would incur an estimated $8,112 in API costs, whereas URP's one-time graph construction costs approximately $12 and subsequent queries are served locally at millisecond latency. While the exact ratio depends on provider-specific pricing and may evolve over time, this experiment illustrates that, in repeated-query settings, a symbolic validation layer can reduce the marginal cost of safety-aware reasoning by several orders of magnitude.
 
 ### 4.7 FOL Validation Error Detection
 
@@ -630,6 +486,8 @@ While YOLO+Claude pipeline (detection + LLM-based relation extraction) has been 
 
 ### 5.3 URP Positioning: Safety Layer for Agentic RAG
 
+**Production-oriented RAG and routing.** Recent work on production-ready RAG stacks such as LightRAG, hierarchical routing, and semantic tool routing focuses on improving efficiency and robustness by adapting chunking granularity, choosing between tools, or skipping retrieval entirely when a long-context model can process the full input. These approaches reduce hallucinations empirically, but they still operate at the semantic level and do not provide explicit logical guarantees. URP is complementary: it assumes that some form of Vector/Graph RAG or long-context processing will be used, and adds a thin FOL validation layer on top, making architectures like LightRAG safer in safety-critical deployments without changing their retrieval logic.
+
 | Feature | Vector RAG | GraphRAG | Agentic RAG | **URP** |
 |---------|------------|----------|-------------|---------|
 | **Multi-hop Accuracy** | 0% | ~85% (narrative) | ~90% | **100% (deterministic)** |
@@ -674,6 +532,8 @@ While YOLO+Claude pipeline (detection + LLM-based relation extraction) has been 
 
 **Critical transparency**: URP guarantees **logical consistency within the graph**, not ground truth accuracy of extracted relations.
 
+URP guarantees logical consistency within the graph, but it does not guarantee that the extracted relations themselves are correct; upstream errors from LLMs or detectors propagate into URP. Our contribution is therefore orthogonal to extraction quality: we remove one failure mode (logically inconsistent graphs), but we do not eliminate errors introduced by the neural components.
+
 **Threat**: Upstream extractors (Claude, YOLO, Qwen3-VL) can hallucinate or miss relations.
 
 **Impact**:
@@ -707,8 +567,8 @@ While YOLO+Claude pipeline (detection + LLM-based relation extraction) has been 
 **Bottleneck**: 58s/page extraction (Qwen3-VL) limits URP to **Tier 1 (Offline Audit)**.
 
 **Deployment tiers**:
-- **Tier 1**: Offline safety audits (LISA traffic logs, CMAPSS maintenance reports) ✅ Production-ready
-- **Tier 2**: Agent validation tool (LangGraph/AutoGen, <10ms validation) ✅ Production-ready (if graph pre-extracted)
+- **Tier 1**: Offline safety audits (LISA traffic logs, CMAPSS maintenance reports) ✅ Practically deployable
+- **Tier 2**: Agent validation tool (LangGraph/AutoGen, <10ms validation) ✅ Practically deployable (if graph pre-extracted)
 - **Tier 3**: Real-time ingestion (~1s target) ❌ Blocked by extraction speed
 
 **Mitigation roadmap**:
@@ -716,7 +576,7 @@ While YOLO+Claude pipeline (detection + LLM-based relation extraction) has been 
 2. **Medium-term**: Distillation (fine-tune Florence-2 on URP dataset, 15s → ~3s)
 3. **Long-term**: Hybrid architecture (YOLO bbox + lightweight classifier, <1s target)
 
-**Current verdict**: URP is production-ready for Tier 1-2, not real-time (Tier 3).
+**Current verdict**: URP is practically deployable for Tier 1-2, not real-time (Tier 3).
 
 ### 6.3 Future Work
 
@@ -737,7 +597,7 @@ While YOLO+Claude pipeline (detection + LLM-based relation extraction) has been 
 
 ---
 
-We introduced **URP (Universal Relational Primitives)**, the first knowledge representation system with built-in First-Order Logic validation. URP provides 7 primitive relation types covering industrial use cases (IoT, process mining, document QA) with guaranteed logical consistency within the knowledge graph.
+We introduced **URP (Universal Relational Primitives)**, to our knowledge one of the first knowledge representation systems with built-in First-Order Logic validation for multimodal RAG. URP provides 7 primitive relation types covering industrial use cases (IoT, process mining, document QA) with guaranteed logical consistency within the knowledge graph.
 
 **Key Results - Industrial-Scale Validation**:
 - **205,887 relations validated** across 31,296 samples from 5 real industrial datasets
@@ -754,9 +614,9 @@ We introduced **URP (Universal Relational Primitives)**, the first knowledge rep
 - **LISA**: 30,000 relations (10K frames, 66.6% with transition state noise detection)
 - **CMAPSS**: 10,050 relations (100 engines, 100% FOL)
 
-**Impact**: URP is production-ready for industrial KR applications requiring guaranteed correctness and explainable reasoning. Full-scale validation demonstrates **16x scale increase** over initial tests with maintained FOL compliance and linear performance. Open-source implementation available.
+**Impact**: URP is practically deployable for industrial KR applications requiring guaranteed correctness and explainable reasoning. Full-scale validation demonstrates **16x scale increase** over initial tests with maintained FOL compliance and linear performance. Open-source implementation available.
 
-**Novel Contribution**: First system combining semantic knowledge representation with deterministic FOL validation at industrial scale, bridging the gap between knowledge graphs and vector RAG. Validated on industry-standard datasets (IBM DocLayNet, NASA CMAPSS, Google Rico).
+**Novel Contribution**: We demonstrate that it is feasible to combine semantic knowledge representation with deterministic FOL validation at industrial scale, bridging the gap between knowledge graphs and vector RAG. Validated on industry-standard datasets (IBM DocLayNet, NASA CMAPSS, Google Rico).
 
 **Transparency**: We acknowledge URP's extraction bottleneck (upstream model errors), rigidity trade-offs (strict FOL rejection), and construction costs (10x slower ingest). These are conscious design choices for safety-critical applications requiring explainable, logically consistent reasoning over flexibility.
 
@@ -857,7 +717,7 @@ URP-7 (Dynamics):       R₇(x,y) ↔ evolves(x,y) ∧ time(x) < time(y)
 
 RAG systems have evolved from Vector RAG (semantic search) to GraphRAG (entity clustering) to Agentic RAG (multi-tool orchestration), but all lack a fundamental capability: **bounded-deterministic validation of logical consistency**. This gap creates safety risks in industrial applications where hallucinations can have catastrophic consequences.
 
-We introduced **URP (Universal Relational Primitives)**, a safety validation layer that enforces First-Order Logic constraints on knowledge graphs. URP groups 7 relation types into 3 safety categories—Temporal (causality, sequentiality), Spatial (containment, co-presence), and State (mutual exclusion)—enabling deterministic anomaly detection without LLM inference.
+We present **URP (Universal Relational Primitives)**, a safety validation layer that enforces First-Order Logic constraints on knowledge graphs. URP groups 7 relation types into 3 safety categories—Temporal (causality, sequentiality), Spatial (containment, co-presence), and State (mutual exclusion)—enabling deterministic anomaly detection without LLM inference.
 
 **Key contributions**:
 1. **Industrial-scale validation**: 205,887 relations across 5 datasets (Rico, DocLayNet, LISA, CMAPSS, OmniDocBench) with 98.4% FOL compliance
@@ -866,11 +726,11 @@ We introduced **URP (Universal Relational Primitives)**, a safety validation lay
 4. **Hallucination prevention**: 100% rejection of logically impossible queries vs GraphRAG's 82% hallucination rate
 5. **Cost efficiency**: 245,828x cheaper than CAG for repeated queries ($12 total vs $8,112 per 1K queries)
 
-**Impact**: URP is not a RAG replacement—it's a **validation tool** that integrates as an agent tool in frameworks like LangGraph and AutoGen. It provides the missing safety layer for agentic RAG systems where LLM reasoning must be verified against deterministic constraints.
+**Impact**: URP is not a RAG replacement—it's a **complementary validation layer** that integrates as an agent tool in frameworks like LangGraph and AutoGen. It provides a missing safety layer for agentic RAG systems where LLM reasoning must be verified against deterministic constraints, enabling logical guarantees and audit trails that probabilistic systems cannot offer.
 
 **Deployment tiers**:
-- **Tier 1** (Production-ready): Offline safety audits (traffic monitoring, fault analysis)
-- **Tier 2** (Production-ready): Agent validation tool (<10ms validation latency)
+- **Tier 1** (Practically deployable): Offline safety audits (traffic monitoring, fault analysis)
+- **Tier 2** (Practically deployable): Agent validation tool (<10ms validation latency)
 - **Tier 3** (Future work): Real-time ingestion (blocked by 58s extraction bottleneck)
 
 **Limitations disclosed**: URP guarantees logical consistency within the graph, not ground truth accuracy of extraction (upstream LLM errors propagate). Mitigation strategies include confidence thresholding, multi-model validation, and human-in-loop for safety-critical domains.

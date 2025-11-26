@@ -1666,7 +1666,7 @@ response = graphrag.query(query, response_type="multi_hop")
 from pru_detector import PRUDetector, PRURelation
 
 # Extract PRU-3 (causality) relations
-detector = PRUDetector(model="claude-sonnet-3.7")
+detector = PRUDetector(model="claude-sonnet-4-20250514")
 relations = detector.extract_pru_relations(
     cmapss_sensor_logs,
     pru_types=["PRU-3"],  # Causality only
@@ -1790,7 +1790,7 @@ Ideal Workflow:
 - **Total**: **$60** for 10 engines
 
 **URP**:
-- **Extraction**: 1000 sensor logs × Claude Sonnet 3.7
+- **Extraction**: 1000 sensor logs × Claude Sonnet 4 (May 2025)
   - Cost: ~$18 (Claude: $0.015/1K input tokens × 1.2M tokens)
 - **Query**: Cypher graph traversal (50 queries, local)
   - Cost: **$0** (no API calls)
@@ -2490,7 +2490,7 @@ URP-7 (Dynamics):       R₇(x,y) ↔ evolves(x,y) ∧ time(x) < time(y)
 - OS: Fedora Linux 43
 - Python: 3.11
 - FalkorDB: 4.2.4 (Redis + Cypher)
-- Claude API: Sonnet 3.7
+- Claude API: Sonnet 4 (claude-sonnet-4-20250514)
 - Vision Models:
   - YOLOv8n: Ultralytics 8.0.196
   - SAM3: facebook/sam-vit-huge (Meta 2025)
